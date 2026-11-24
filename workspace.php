@@ -17,7 +17,10 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
  try{
   $action=(string)($_POST['action']??'');
   if($action==='consultation_send'){
-   $pid=(int)($_POST['property_id']??0);module_require_property($pid,false);
+   $conversationId=(int)($_POST['conversation_id']??0);
+   $st=db()->prepare('SELECT id,property_id,producer_id,professional_id FROM consultation_conversations WHERE id=? AND (producer_id=? OR professional_id=?) LIMIT 1');
+   $st->execute([$conversationId,$user['id'],$user['id']]);$conversation=$st->fetch();
+   if(!$conversation||!module_property((int)$conversation['property_id']))throw new RuntimeException('Conversa indisponível ou sem permissão de acesso.');
    $message=trim((string)($_POST['message']??''));
    if(mb_strlen($message)>5000)throw new RuntimeException('A mensagem deve ter no máximo 5.000 caracteres.');
    $stored=null;$original=null;$mime=null;$size=0;
@@ -34,9 +37,9 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     $original=mb_substr(basename((string)$f['name']),0,250);$size=(int)$f['size'];
    }
    if($message===''&&$stored===null)throw new RuntimeException('Escreva uma mensagem ou selecione um arquivo.');
-   try{$st=db()->prepare('INSERT INTO consultation_messages(property_id,sender_id,message_text,original_name,stored_name,mime_type,file_size) VALUES(?,?,?,?,?,?,?)');$st->execute([$pid,$user['id'],$message?:null,$original,$stored,$mime,$size]);}
+   try{$st=db()->prepare('INSERT INTO consultation_messages(conversation_id,sender_id,message_text,original_name,stored_name,mime_type,file_size) VALUES(?,?,?,?,?,?,?)');$st->execute([$conversationId,$user['id'],$message?:null,$original,$stored,$mime,$size]);}
    catch(Throwable $e){if($stored&&is_file(__DIR__.'/storage/'.$stored))@unlink(__DIR__.'/storage/'.$stored);throw $e;}
-   redirect('index.php?page=consultations&id='.$pid.'#latest-message');
+   redirect('index.php?page=consultations&id='.$conversationId.'#latest-message');
   }
   if($action==='equipment_create'){
    $pid=(int)($_POST['property_id']??0);module_require_property($pid,true);
@@ -217,19 +220,33 @@ function module_rows(string $sql,array $ids): array {
  catch(Throwable $e){error_log('Germina workspace query failed: '.$e->getMessage());return [];}
 }
 $activities=[];$visits=[];$recs=[];$tasks=[];$equipment=[];$stock=[];$equipmentLogs=[];$maintenance=[];$fields=[];
-$consultationProperty=null;$consultationMessages=[];$consultationError='';
+$consultationProperty=null;$consultationMessages=[];$consultationError='';$consultationConversations=[];$consultationConversation=null;
 if($page==='consultations'){
- if($props){
-  $requestedId=(int)($_GET['id']??$props[0]['id']);
-  $consultationProperty=module_property($requestedId);
-  if(!$consultationProperty){$consultationProperty=module_property((int)$props[0]['id']);}
-  if($consultationProperty){
-   try{
-    $st=db()->prepare('SELECT m.*,u.name sender_name FROM consultation_messages m JOIN users u ON u.id=m.sender_id WHERE m.property_id=? ORDER BY m.id DESC LIMIT 100');
-    $st->execute([$consultationProperty['id']]);$consultationMessages=array_reverse($st->fetchAll());
-   }catch(Throwable $e){error_log('Germina consultation history: '.$e->getMessage());$consultationError='O recurso de Consultas ainda precisa ser preparado no banco de dados. Execute upgrade_consultas.php uma única vez.';}
+ try{
+  foreach($props as $cp){
+   if((int)$cp['owner_id']===(int)$user['id']){
+    $st=db()->prepare("SELECT pm.user_id FROM property_members pm JOIN users u ON u.id=pm.user_id WHERE pm.property_id=? AND u.role='professional'");
+    $st->execute([$cp['id']]);
+    foreach($st->fetchAll() as $professional){
+     $ins=db()->prepare('INSERT INTO consultation_conversations(property_id,producer_id,professional_id) VALUES(?,?,?) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)');
+     $ins->execute([$cp['id'],$user['id'],$professional['user_id']]);
+    }
+   }elseif($user['role']==='professional'){
+    $ins=db()->prepare('INSERT INTO consultation_conversations(property_id,producer_id,professional_id) VALUES(?,?,?) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)');
+    $ins->execute([$cp['id'],$cp['owner_id'],$user['id']]);
+   }
   }
- }
+  $st=db()->prepare('SELECT c.id,c.property_id,c.producer_id,c.professional_id,c.created_at,p.name property_name,prod.name producer_name,pro.name professional_name FROM consultation_conversations c JOIN properties p ON p.id=c.property_id JOIN users prod ON prod.id=c.producer_id JOIN users pro ON pro.id=c.professional_id WHERE c.producer_id=? OR c.professional_id=? ORDER BY c.created_at DESC,c.id DESC');
+  $st->execute([$user['id'],$user['id']]);$consultationConversations=$st->fetchAll();
+  if($consultationConversations){
+   $requestedId=(int)($_GET['id']??$consultationConversations[0]['id']);
+   foreach($consultationConversations as $cc){if((int)$cc['id']===$requestedId){$consultationConversation=$cc;break;}}
+   if(!$consultationConversation)$consultationConversation=$consultationConversations[0];
+   $consultationProperty=module_property((int)$consultationConversation['property_id']);
+   $st=db()->prepare('SELECT m.*,u.name sender_name FROM consultation_messages m JOIN users u ON u.id=m.sender_id WHERE m.conversation_id=? ORDER BY m.id DESC LIMIT 100');
+   $st->execute([$consultationConversation['id']]);$consultationMessages=array_reverse($st->fetchAll());
+  }
+ }catch(Throwable $e){error_log('Germina consultation history: '.$e->getMessage());$consultationError='O recurso de Consultas ainda precisa ser preparado no banco de dados. Execute upgrade_consultas.php uma única vez.';}
 }
 $needsActivities=in_array($page,['activities','reports'],true);
 $needsVisits=in_array($page,['visits','reports'],true);
@@ -315,14 +332,15 @@ $moduleIconSvg=[
 <?php if($consultationError):?><div class="alert"><?=e($consultationError)?></div><?php endif;?>
 <div class="consultation-intro"><div><h2>Comunicação entre produtor e profissional</h2><p>Converse diretamente dentro do Germina. As mensagens e os arquivos ficam vinculados à propriedade e só são visíveis para quem tem acesso aprovado.</p></div><span class="consultation-secure">Acesso controlado</span></div>
 <?php if(!$props):?><div class="panel empty"><strong>Nenhuma propriedade disponível</strong><p>Cadastre uma propriedade ou solicite acesso a uma propriedade compartilhada para iniciar uma consulta.</p><a class="btn primary" href="index.php?page=team">Equipe e acessos</a></div>
-<?php elseif($consultationProperty):?>
-<div class="consultation-property-picker"><form method="get"><input type="hidden" name="page" value="consultations"><label>Conversa da propriedade<select name="id" onchange="this.form.submit()"><?php foreach($props as $cp):?><option value="<?=(int)$cp['id']?>" <?=((int)$consultationProperty['id']===(int)$cp['id']?'selected':'')?>><?=e($cp['name'])?></option><?php endforeach;?></select></label></form><span><?=count($consultationMessages)?> mensagens recentes</span></div>
-<section class="consultation-chat" data-consultation-chat data-user-id="<?=(int)$user['id']?>" data-property-id="<?=(int)$consultationProperty['id']?>" data-last-id="<?=(int)($consultationMessages?end($consultationMessages)['id']:0)?>">
- <div class="consultation-chat-head"><span class="consultation-avatar">✳</span><div><strong><?=e($consultationProperty['name'])?></strong><small>Produtor e profissionais autorizados</small></div><span class="consultation-online">Conversa da propriedade</span></div>
+<?php elseif(!$consultationConversations):?><div class="panel empty"><strong>Nenhuma conversa disponível ainda</strong><p>As conversas individuais aparecem aqui depois que o produtor aprova o acesso do profissional à propriedade.</p><a class="btn primary" href="index.php?page=team">Ver equipe e acessos</a></div>
+<?php elseif($consultationConversation&&$consultationProperty):?>
+<div class="consultation-property-picker"><form method="get"><input type="hidden" name="page" value="consultations"><label>Conversa<select name="id" onchange="this.form.submit()"><?php foreach($consultationConversations as $cc):?><option value="<?=(int)$cc['id']?>" <?=((int)$consultationConversation['id']===(int)$cc['id']?'selected':'')?>><?=e($cc['property_name'].' — '.((int)$cc['producer_id']===(int)$user['id']?'com '.$cc['professional_name']:'com '.$cc['producer_name']))?></option><?php endforeach;?></select></label></form><span><?=count($consultationMessages)?> mensagens recentes</span></div>
+<section class="consultation-chat" data-consultation-chat data-user-id="<?=(int)$user['id']?>" data-conversation-id="<?=(int)$consultationConversation['id']?>" data-last-id="<?=(int)($consultationMessages?end($consultationMessages)['id']:0)?>">
+ <div class="consultation-chat-head"><span class="consultation-avatar">✳</span><div><strong><?=e($consultationProperty['name'])?></strong><small>Conversa individual com <?=e((int)$consultationConversation['producer_id']===(int)$user['id']?$consultationConversation['professional_name']:$consultationConversation['producer_name'])?></small></div><span class="consultation-online">Conversa privada</span></div>
  <div class="consultation-messages" id="consultationMessages">
  <?php if(!$consultationMessages):?><div class="consultation-empty"><span>✉</span><strong>Comece a conversa</strong><p>Envie uma mensagem, foto, áudio, vídeo ou documento para iniciar o atendimento.</p></div><?php else:foreach($consultationMessages as $cm):$mine=(int)$cm['sender_id']===(int)$user['id'];?><article class="consultation-message <?=$mine?'mine':'theirs'?>" data-message-id="<?=(int)$cm['id']?>"><div class="consultation-message-meta"><strong><?=e($mine?'Você':$cm['sender_name'])?></strong><time><?=date('d/m/Y H:i',strtotime($cm['created_at']))?></time></div><?php if($cm['message_text']):?><p><?=nl2br(e($cm['message_text']))?></p><?php endif;?><?php if($cm['stored_name']):?><div class="consultation-attachment"><?php if(str_starts_with($cm['mime_type'],'image/')):?><a href="consultation_download.php?id=<?=(int)$cm['id']?>" target="_blank"><img src="consultation_download.php?id=<?=(int)$cm['id']?>&inline=1" alt="<?=e($cm['original_name'])?>"></a><?php elseif(str_starts_with($cm['mime_type'],'audio/')):?><audio controls preload="none" src="consultation_download.php?id=<?=(int)$cm['id']?>&inline=1"></audio><?php elseif(str_starts_with($cm['mime_type'],'video/')):?><video controls preload="none" src="consultation_download.php?id=<?=(int)$cm['id']?>&inline=1"></video><?php endif;?><a class="consultation-file-link" href="consultation_download.php?id=<?=(int)$cm['id']?>"><?=e($cm['original_name'])?> · <?=number_format((int)$cm['file_size']/1024,0,',','.')?> KB</a></div><?php endif;?></article><?php endforeach;endif;?>
  </div>
- <form method="post" enctype="multipart/form-data" class="consultation-composer" id="consultationComposer"><?=csrf_field()?><input type="hidden" name="action" value="consultation_send"><input type="hidden" name="property_id" value="<?=(int)$consultationProperty['id']?>"><label class="consultation-text-label" for="consultationMessage">Sua mensagem</label><textarea id="consultationMessage" name="message" rows="3" maxlength="5000" placeholder="Escreva sua mensagem para o produtor ou profissional..."></textarea><div class="consultation-compose-bottom"><label class="consultation-attach"><span>＋ Anexar arquivo</span><input type="file" name="attachment" accept="image/*,audio/*,video/mp4,video/webm,video/quicktime,.pdf,.doc,.docx,.xlsx,.csv,.txt"></label><small>Fotos, documentos, áudios e vídeos · até 20 MB por arquivo*</small><button class="btn primary">Enviar mensagem</button></div></form>
+ <form method="post" enctype="multipart/form-data" class="consultation-composer" id="consultationComposer"><?=csrf_field()?><input type="hidden" name="action" value="consultation_send"><input type="hidden" name="conversation_id" value="<?=(int)$consultationConversation['id']?>"><label class="consultation-text-label" for="consultationMessage">Sua mensagem</label><textarea id="consultationMessage" name="message" rows="3" maxlength="5000" placeholder="Escreva sua mensagem para o produtor ou profissional..."></textarea><div class="consultation-compose-bottom"><label class="consultation-attach"><span>＋ Anexar arquivo</span><input type="file" name="attachment" accept="image/*,audio/*,video/mp4,video/webm,video/quicktime,.pdf,.doc,.docx,.xlsx,.csv,.txt"></label><small>Fotos, documentos, áudios e vídeos · até 20 MB por arquivo*</small><button class="btn primary">Enviar mensagem</button></div></form>
  <p class="consultation-footnote">* O limite efetivo também depende das configurações de upload da hospedagem. Evite enviar arquivos com dados pessoais desnecessários.</p>
 </section>
 <?php else:?><div class="panel empty"><strong>Selecione uma propriedade para conversar.</strong></div><?php endif;?>
@@ -396,7 +414,7 @@ document.querySelectorAll('[data-copy-code]').forEach(button=>button.addEventLis
   list.append(article);last=Math.max(last,Number(m.id));
  }
  async function poll(){
-  try{const r=await fetch('consultation_feed.php?property_id='+encodeURIComponent(chat.dataset.propertyId)+'&after='+last,{credentials:'same-origin',cache:'no-store'});if(!r.ok)return;const data=await r.json();(data.messages||[]).forEach(addMessage);if(data.messages&&data.messages.length)list.scrollTop=list.scrollHeight;}
+  try{const r=await fetch('consultation_feed.php?conversation_id='+encodeURIComponent(chat.dataset.conversationId)+'&after='+last,{credentials:'same-origin',cache:'no-store'});if(!r.ok)return;const data=await r.json();(data.messages||[]).forEach(addMessage);if(data.messages&&data.messages.length)list.scrollTop=list.scrollHeight;}
   catch(e){}
  }
  list.scrollTop=list.scrollHeight;
