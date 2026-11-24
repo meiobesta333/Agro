@@ -117,7 +117,7 @@ if ($user) {
 ?><!doctype html>
 <html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title><?= e($pageTitle ?? 'Agro') ?> · Germina</title><link rel="stylesheet" href="assets/app.css?v=20261124f">
+<title><?= e($pageTitle ?? 'Agro') ?> · Germina</title><link rel="stylesheet" href="assets/app.css?v=20261124g">
 </head><body>
 <?php if (!$user): ?>
 <div class="auth-shell"><div class="auth-brand"><span class="brand-mark">✳</span><span>Germina</span></div>
@@ -147,7 +147,7 @@ if ($user) {
 <a class="nav-link <?= $page==='reports'?'active':'' ?>" href="index.php?page=reports"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V4m0 16h17"/><rect x="7" y="12" width="3" height="5" rx="1"/><rect x="13" y="8" width="3" height="9" rx="1"/><rect x="19" y="5" width="2" height="12" rx="1"/></svg></span><span>Relatórios</span></a>
 <a class="nav-link <?= $page==='attachments'?'active':'' ?>" href="index.php?page=attachments"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 12 6.5-6.5a4 4 0 0 1 5.7 5.7l-9 9a6 6 0 0 1-8.5-8.5l9-9"/></svg></span><span>Arquivos</span></a>
 <div class="sidebar-bottom"><div class="avatar"><?= e(strtoupper(substr($user['name'],0,1))) ?></div><div class="user-meta"><strong><?= e($user['name']) ?></strong><small><?= $user['role']==='professional'?'Profissional':'Produtor rural' ?></small></div><form method="post" action="index.php?page=logout"><?= csrf_field() ?><button class="logout" title="Sair">↗</button></form></div></aside><button class="sidebar-backdrop" type="button" aria-label="Fechar menu" data-sidebar-close></button>
-<main class="main"><header class="topbar"><button class="menu-toggle" type="button" aria-label="Abrir menu" aria-controls="appSidebar" aria-expanded="false" data-sidebar-toggle><span></span><span></span><span></span></button><div><div class="breadcrumb">Workspace / <?= e($page==='dashboard'?'Visão geral':($page==='property'?'Propriedade':($page==='activities'?'Diário de campo':'Propriedades'))) ?></div><h1><?= e($page==='dashboard'?'Visão geral':($page==='property'?'Detalhes da propriedade':($page==='activities'?'Diário de campo':'Propriedades'))) ?></h1></div><div class="top-actions"><span class="user-chip"><?= e($user['name']) ?></span></div></header>
+<main class="main"><header class="topbar"><button class="mobile-back" type="button" data-mobile-back aria-label="Voltar"><span aria-hidden="true">←</span><span>Voltar</span></button><button class="menu-toggle" type="button" aria-label="Abrir menu" aria-controls="appSidebar" aria-expanded="false" data-sidebar-toggle><span></span><span></span><span></span></button><div><div class="breadcrumb">Workspace / <?= e($page==='dashboard'?'Visão geral':($page==='property'?'Propriedade':($page==='activities'?'Diário de campo':'Propriedades'))) ?></div><h1><?= e($page==='dashboard'?'Visão geral':($page==='property'?'Detalhes da propriedade':($page==='activities'?'Diário de campo':'Propriedades'))) ?></h1></div><div class="top-actions"><span class="user-chip"><?= e($user['name']) ?></span></div></header>
 <div class="content">
 <?php if ($notice): ?><div class="success"><?= e($notice) ?></div><?php endif; ?>
 <?php foreach ($errors as $error): ?><div class="alert"><?= e($error) ?></div><?php endforeach; ?>
@@ -181,6 +181,13 @@ $st=db()->prepare('SELECT a.*,f.name AS field_name,u.name AS author FROM activit
 <script>
 (function(){
   const body=document.body;
+  document.querySelectorAll('[data-mobile-back]').forEach(button=>button.addEventListener('click',()=>{
+    try {
+      const previous=new URL(document.referrer);
+      if(previous.origin===window.location.origin && window.history.length>1){window.history.back();return;}
+    } catch(e) {}
+    window.location.href='index.php';
+  }));
   const toggle=document.querySelector('[data-sidebar-toggle]');
   const close=document.querySelectorAll('[data-sidebar-close], .sidebar .nav-link');
   const sidebar=document.getElementById('appSidebar');
