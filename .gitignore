@@ -1,0 +1,7 @@
+/config.php
+/.env
+/.env.*
+/backups/
+/logs/
+*.log
+.DS_Store
