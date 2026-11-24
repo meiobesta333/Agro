@@ -236,8 +236,8 @@ if($page==='consultations'){
     $ins->execute([$cp['id'],$cp['owner_id'],$user['id']]);
    }
   }
-  $st=db()->prepare('SELECT c.id,c.property_id,c.producer_id,c.professional_id,c.created_at,p.name property_name,prod.name producer_name,pro.name professional_name FROM consultation_conversations c JOIN properties p ON p.id=c.property_id JOIN users prod ON prod.id=c.producer_id JOIN users pro ON pro.id=c.professional_id WHERE c.producer_id=? OR c.professional_id=? ORDER BY c.created_at DESC,c.id DESC');
-  $st->execute([$user['id'],$user['id']]);$consultationConversations=$st->fetchAll();
+  $st=db()->prepare('SELECT c.id,c.property_id,c.producer_id,c.professional_id,c.created_at,p.name property_name,prod.name producer_name,pro.name professional_name FROM consultation_conversations c JOIN properties p ON p.id=c.property_id JOIN users prod ON prod.id=c.producer_id JOIN users pro ON pro.id=c.professional_id WHERE (c.producer_id=? AND p.owner_id=?) OR (c.professional_id=? AND EXISTS (SELECT 1 FROM property_members pm WHERE pm.property_id=c.property_id AND pm.user_id=?)) ORDER BY c.created_at DESC,c.id DESC');
+  $st->execute([$user['id'],$user['id'],$user['id'],$user['id']]);$consultationConversations=$st->fetchAll();
   if($consultationConversations){
    $requestedId=(int)($_GET['id']??$consultationConversations[0]['id']);
    foreach($consultationConversations as $cc){if((int)$cc['id']===$requestedId){$consultationConversation=$cc;break;}}
