@@ -117,7 +117,7 @@ if ($user) {
 ?><!doctype html>
 <html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title><?= e($pageTitle ?? 'Agro') ?> · Agro</title><link rel="stylesheet" href="assets/app.css?v=20261124b">
+<title><?= e($pageTitle ?? 'Agro') ?> · Agro</title><link rel="stylesheet" href="assets/app.css?v=20261124c">
 </head><body>
 <?php if (!$user): ?>
 <div class="auth-shell"><div class="auth-brand"><span class="brand-mark">✳</span><span>Agro</span></div>
