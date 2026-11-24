@@ -137,15 +137,15 @@ if ($user) {
 </section><p class="auth-caption">Gestão simples para quem vive o campo.</p></div>
 <?php else: ?>
 <div class="layout"><aside class="sidebar"><a class="brand" href="index.php"><span class="brand-mark">✳</span><span>Agro<small>GESTÃO NO CAMPO</small></span></a><div class="nav-label">MENU PRINCIPAL</div>
-<a class="nav-link <?= $page==='dashboard'?'active':'' ?>" href="index.php">◫ <span>Visão geral</span></a>
-<a class="nav-link <?= $page==='properties' || $page==='property'?'active':'' ?>" href="index.php?page=properties">⌂ <span>Propriedades</span></a>
-<a class="nav-link" href="index.php?page=activities">▤ <span>Diário de campo</span></a>
-<a class="nav-link" href="index.php?page=team">♧ <span>Equipe e acessos</span></a>
-<a class="nav-link" href="index.php?page=visits">◷ <span>Visitas técnicas</span></a>
-<a class="nav-link" href="index.php?page=recommendations">✳ <span>Recomendações</span></a>
-<a class="nav-link" href="index.php?page=tasks">☑ <span>Tarefas</span></a>
-<a class="nav-link" href="index.php?page=reports">▥ <span>Relatórios</span></a>
-<a class="nav-link" href="index.php?page=attachments">⌁ <span>Arquivos</span></a>
+<a class="nav-link <?= $page==='dashboard'?'active':'' ?>" href="index.php"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="5" rx="2"/><rect x="13" y="10" width="8" height="11" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/></svg></span><span>Visão geral</span></a>
+<a class="nav-link <?= $page==='properties' || $page==='property'?'active':'' ?>" href="index.php?page=properties"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V21H3z"/><path d="M9 21v-7h6v7"/></svg></span><span>Propriedades</span></a>
+<a class="nav-link <?= $page==='activities'?'active':'' ?>" href="index.php?page=activities"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m0 14h16M7 15l4-4 3 2 5-7"/></svg></span><span>Diário de campo</span></a>
+<a class="nav-link <?= $page==='team'?'active':'' ?>" href="index.php?page=team"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 4v2"/></svg></span><span>Equipe e acessos</span></a>
+<a class="nav-link <?= $page==='visits'?'active':'' ?>" href="index.php?page=visits"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M8 2v4m8-4v4M3 9h18m-13 5h3m-3 3h7"/></svg></span><span>Visitas técnicas</span></a>
+<a class="nav-link <?= $page==='recommendations'?'active':'' ?>" href="index.php?page=recommendations"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21c-5-3-8-7-8-11a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 4-3 8-8 11Z"/><path d="M12 18c0-5 2-8 5-10M12 14c-1-2-3-3-5-3"/></svg></span><span>Recomendações</span></a>
+<a class="nav-link <?= $page==='tasks'?'active':'' ?>" href="index.php?page=tasks"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="m8 12 2.5 2.5L16 9m-8-3h8"/></svg></span><span>Tarefas</span></a>
+<a class="nav-link <?= $page==='reports'?'active':'' ?>" href="index.php?page=reports"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V4m0 16h17"/><rect x="7" y="12" width="3" height="5" rx="1"/><rect x="13" y="8" width="3" height="9" rx="1"/><rect x="19" y="5" width="2" height="12" rx="1"/></svg></span><span>Relatórios</span></a>
+<a class="nav-link <?= $page==='attachments'?'active':'' ?>" href="index.php?page=attachments"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 12 6.5-6.5a4 4 0 0 1 5.7 5.7l-9 9a6 6 0 0 1-8.5-8.5l9-9"/></svg></span><span>Arquivos</span></a>
 <div class="sidebar-bottom"><div class="avatar"><?= e(strtoupper(substr($user['name'],0,1))) ?></div><div class="user-meta"><strong><?= e($user['name']) ?></strong><small><?= $user['role']==='professional'?'Profissional':'Produtor rural' ?></small></div><form method="post" action="index.php?page=logout"><?= csrf_field() ?><button class="logout" title="Sair">↗</button></form></div></aside>
 <main class="main"><header class="topbar"><div><div class="breadcrumb">Workspace / <?= e($page==='dashboard'?'Visão geral':($page==='property'?'Propriedade':($page==='activities'?'Diário de campo':'Propriedades'))) ?></div><h1><?= e($page==='dashboard'?'Visão geral':($page==='property'?'Detalhes da propriedade':($page==='activities'?'Diário de campo':'Propriedades'))) ?></h1></div><div class="top-actions"><span class="user-chip"><?= e($user['name']) ?></span></div></header>
 <div class="content">
