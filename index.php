@@ -6,6 +6,8 @@ $page = $_GET['page'] ?? (current_user() ? 'dashboard' : 'login');
 $publicPages = ['login', 'register'];
 if (!current_user() && !in_array($page, $publicPages, true)) { redirect('index.php?page=login'); }
 if (current_user() && in_array($page, $publicPages, true)) { redirect('index.php'); }
+$modulePages = ['team','visits','recommendations','tasks','reports','attachments'];
+if (current_user() && in_array($page, $modulePages, true)) { require __DIR__ . '/workspace.php'; exit; }
 
 if ($page === 'logout') {
     require_post();
@@ -110,9 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $user = current_user();
 $properties = [];
 if ($user) {
-    $stmt = db()->prepare('SELECT p.*, (SELECT COUNT(*) FROM fields f WHERE f.property_id=p.id) AS field_count FROM properties p WHERE p.owner_id=? ORDER BY p.created_at DESC');
-    $stmt->execute([$user['id']]);
-    $properties = $stmt->fetchAll();
+    $properties = user_properties();
 }
 ?><!doctype html>
 <html lang="pt-BR"><head>
@@ -140,6 +140,12 @@ if ($user) {
 <a class="nav-link <?= $page==='dashboard'?'active':'' ?>" href="index.php">◫ <span>Visão geral</span></a>
 <a class="nav-link <?= $page==='properties' || $page==='property'?'active':'' ?>" href="index.php?page=properties">⌂ <span>Propriedades</span></a>
 <a class="nav-link" href="index.php?page=activities">▤ <span>Diário de campo</span></a>
+<a class="nav-link" href="index.php?page=team">♧ <span>Equipe e acessos</span></a>
+<a class="nav-link" href="index.php?page=visits">◷ <span>Visitas técnicas</span></a>
+<a class="nav-link" href="index.php?page=recommendations">✳ <span>Recomendações</span></a>
+<a class="nav-link" href="index.php?page=tasks">☑ <span>Tarefas</span></a>
+<a class="nav-link" href="index.php?page=reports">▥ <span>Relatórios</span></a>
+<a class="nav-link" href="index.php?page=attachments">⌁ <span>Arquivos</span></a>
 <div class="sidebar-bottom"><div class="avatar"><?= e(strtoupper(substr($user['name'],0,1))) ?></div><div class="user-meta"><strong><?= e($user['name']) ?></strong><small><?= $user['role']==='professional'?'Profissional':'Produtor rural' ?></small></div><form method="post" action="index.php?page=logout"><?= csrf_field() ?><button class="logout" title="Sair">↗</button></form></div></aside>
 <main class="main"><header class="topbar"><div><div class="breadcrumb">Workspace / <?= e($page==='dashboard'?'Visão geral':($page==='property'?'Propriedade':($page==='activities'?'Diário de campo':'Propriedades'))) ?></div><h1><?= e($page==='dashboard'?'Visão geral':($page==='property'?'Detalhes da propriedade':($page==='activities'?'Diário de campo':'Propriedades'))) ?></h1></div><div class="top-actions"><span class="user-chip"><?= e($user['name']) ?></span></div></header>
 <div class="content">
