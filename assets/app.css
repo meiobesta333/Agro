@@ -295,3 +295,11 @@ body{font-size:15px;color:#17251c;line-height:1.55}
   .sidebar .sidebar-bottom a,.sidebar .sidebar-bottom button{font-size:14px!important}
   .sidebar .nav-icon{width:22px!important;height:22px!important;flex:none}
 }
+
+
+/* Botão voltar no topo em todas as telas internas mobile */
+.mobile-back{display:none;align-items:center;justify-content:center;gap:7px;min-height:42px;padding:0 13px;border:1px solid #cbd9ce;border-radius:11px;background:#fff;color:#155b37;font:700 14px/1.2 inherit;cursor:pointer;white-space:nowrap;transition:background .25s ease,border-color .25s ease,transform .25s ease}
+.mobile-back:hover{background:#edf5ee;border-color:#a9c6b0;transform:translateX(-2px)}
+.mobile-back span:first-child{font-size:21px;line-height:1}
+@media(max-width:850px){.mobile-back{display:inline-flex;flex:none}.topbar{gap:10px!important}.topbar>div:first-of-type{min-width:0}.topbar .breadcrumb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+@media(max-width:380px){.mobile-back{min-height:40px;padding:0 10px;font-size:13px}.topbar{gap:7px!important}}
