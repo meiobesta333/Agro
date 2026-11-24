@@ -117,10 +117,10 @@ if ($user) {
 ?><!doctype html>
 <html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title><?= e($pageTitle ?? 'Agro') ?> · Agro</title><link rel="stylesheet" href="assets/app.css?v=20261124e">
+<title><?= e($pageTitle ?? 'Agro') ?> · Germina</title><link rel="stylesheet" href="assets/app.css?v=20261124f">
 </head><body>
 <?php if (!$user): ?>
-<div class="auth-shell"><div class="auth-brand"><span class="brand-mark">✳</span><span>Agro</span></div>
+<div class="auth-shell"><div class="auth-brand"><span class="brand-mark">✳</span><span>Germina</span></div>
 <section class="auth-card">
 <?php if ($page === 'register'): ?>
 <h1>Crie sua conta</h1><p class="muted">Comece a organizar sua rotina no campo.</p>
@@ -136,7 +136,7 @@ if ($user) {
 <?php endif; ?>
 </section><p class="auth-caption">Gestão simples para quem vive o campo.</p></div>
 <?php else: ?>
-<div class="layout"><aside class="sidebar" id="appSidebar"><a class="brand" href="index.php"><span class="brand-mark">✳</span><span>Agro<small>GESTÃO NO CAMPO</small></span></a><div class="nav-label">MENU PRINCIPAL</div>
+<div class="layout"><aside class="sidebar" id="appSidebar"><a class="brand" href="index.php"><span class="brand-mark">✳</span><span>Germina<small>GESTÃO NO CAMPO</small></span></a><div class="nav-label">MENU PRINCIPAL</div>
 <a class="nav-link <?= $page==='dashboard'?'active':'' ?>" href="index.php"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="5" rx="2"/><rect x="13" y="10" width="8" height="11" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/></svg></span><span>Visão geral</span></a>
 <a class="nav-link <?= $page==='properties' || $page==='property'?'active':'' ?>" href="index.php?page=properties"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V21H3z"/><path d="M9 21v-7h6v7"/></svg></span><span>Propriedades</span></a>
 <a class="nav-link <?= $page==='activities'?'active':'' ?>" href="index.php?page=activities"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m0 14h16M7 15l4-4 3 2 5-7"/></svg></span><span>Diário de campo</span></a>
@@ -176,7 +176,7 @@ $st=db()->prepare('SELECT a.*,f.name AS field_name,u.name AS author FROM activit
 <?php $st=db()->prepare('SELECT a.*,p.name AS property_name,f.name AS field_name FROM activities a JOIN properties p ON p.id=a.property_id LEFT JOIN fields f ON f.id=a.field_id WHERE p.owner_id=? ORDER BY a.activity_date DESC,a.id DESC LIMIT 100');$st->execute([$user['id']]);$allActivities=$st->fetchAll(); ?>
 <div class="panel"><?php if(!$allActivities): ?><div class="empty"><strong>Seu diário está vazio</strong><p>Abra uma propriedade para registrar a primeira atividade.</p><a class="btn primary" href="index.php?page=properties">Ver propriedades</a></div><?php else: ?><div class="activity-list"><?php foreach($allActivities as $a): ?><div class="activity-item"><span class="activity-dot"></span><div><strong><?= e($a['title']) ?></strong><p><?= e($a['description']??'') ?></p><small><?= e($a['property_name']) ?> · <?= e($a['field_name']?:'Área geral') ?> · <?= date('d/m/Y',strtotime($a['activity_date'])) ?></small></div></div><?php endforeach; ?></div><?php endif; ?></div>
 <?php else: ?><div class="panel empty"><strong>Página não encontrada</strong><a href="index.php">Voltar ao início</a></div><?php endif; ?>
-<footer class="footer">Agro · Ambiente de testes · <?= date('Y') ?></footer></div></main></div>
+<footer class="footer">Germina · Ambiente de testes · <?= date('Y') ?></footer></div></main></div>
 <?php endif; ?>
 <script>
 (function(){
