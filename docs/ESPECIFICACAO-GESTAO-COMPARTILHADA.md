@@ -373,7 +373,7 @@ Antes de escrever a primeira migration, confirmar o schema real de `users`, `pro
 
 ## Implementação adicional — Consultas internas
 
-O módulo **Consultas** oferece uma sala de conversa vinculada a cada propriedade compartilhada. O produtor responsável e todos os profissionais com acesso aprovado àquela propriedade participam do mesmo histórico.
+O módulo **Consultas** oferece uma sala de conversa vinculada a cada propriedade compartilhada. O produtor responsável e cada profissional com acesso aprovado têm uma conversa individual, separada das conversas com outros profissionais.
 
 ### Escopo da primeira versão
 - Mensagens de texto com histórico persistido no banco.
@@ -385,12 +385,12 @@ O módulo **Consultas** oferece uma sala de conversa vinculada a cada propriedad
 - Validação de MIME no servidor por `finfo`, lista de formatos permitidos e limite de 20 MB por arquivo, sujeito aos limites reais de PHP e da hospedagem.
 
 ### Estrutura de dados
-A tabela `consultation_messages` armazena propriedade, remetente, texto opcional, metadados do anexo e data. A sala é compartilhada por propriedade: todos os participantes autorizados daquela propriedade veem o mesmo histórico.
+A tabela `consultation_messages` armazena propriedade, remetente, texto opcional, metadados do anexo e data. Cada conversa é vinculada à propriedade e ao par produtor-profissional. Somente o produtor responsável e o profissional daquela conversa podem consultar o histórico.
 
 ### Limitações da primeira versão
 - Não há chamadas de voz/vídeo ao vivo; o módulo envia gravações e arquivos de áudio/vídeo.
 - Não há criptografia ponta a ponta; o acesso é protegido pela autenticação e autorização da aplicação e pelo armazenamento privado.
-- Não há confirmação de leitura, indicador de digitação, notificações push ou conversas privadas individuais entre vários profissionais da mesma propriedade.
+- Não há confirmação de leitura, indicador de digitação ou notificações push.
 - A atualização de novas mensagens usa consulta periódica a cada 10 segundos.
 - O tamanho efetivo de upload depende das diretivas `upload_max_filesize` e `post_max_size`, além do espaço e da transferência disponíveis na hospedagem.
 
