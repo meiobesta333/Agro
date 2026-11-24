@@ -93,7 +93,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('index.php?page=property&id=' . $propertyId);
         }
     } catch (Throwable $e) {
-        $errors[] = $e instanceof PDOException && str_contains($e->getMessage(), 'Duplicate') ? 'Este e-mail já está cadastrado.' : $e->getMessage();
+        if ($e instanceof PDOException && (string)$e->getCode() === '23000') {
+            $errors[] = 'Este e-mail já está cadastrado ou existe um registro duplicado.';
+        } else {
+            $errors[] = $e instanceof PDOException ? 'Não foi possível salvar os dados. Confira os campos e tente novamente.' : $e->getMessage();
+        }
+        if ($page === 'property_create') {
+            $page = 'properties';
+        } elseif ($page === 'field_create' || $page === 'activity_create') {
+            $_GET['id'] = (string)(int)($_POST['property_id'] ?? 0);
+            $page = 'property';
+        }
     }
 }
 
