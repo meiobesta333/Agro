@@ -6,7 +6,7 @@ $page = $_GET['page'] ?? (current_user() ? 'dashboard' : 'login');
 $publicPages = ['login', 'register'];
 if (!current_user() && !in_array($page, $publicPages, true)) { redirect('index.php?page=login'); }
 if (current_user() && in_array($page, $publicPages, true)) { redirect('index.php'); }
-$modulePages = ['team','visits','recommendations','tasks','reports','attachments'];
+$modulePages = ['team','visits','recommendations','tasks','reports','attachments','activities'];
 if (current_user() && in_array($page, $modulePages, true)) { require __DIR__ . '/workspace.php'; exit; }
 
 if ($page === 'logout') {
