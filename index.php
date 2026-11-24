@@ -6,7 +6,7 @@ $page = $_GET['page'] ?? (current_user() ? 'dashboard' : 'login');
 $publicPages = ['login', 'register'];
 if (!current_user() && !in_array($page, $publicPages, true)) { redirect('index.php?page=login'); }
 if (current_user() && in_array($page, $publicPages, true)) { redirect('index.php'); }
-$modulePages = ['team','visits','recommendations','tasks','reports','attachments','activities'];
+$modulePages = ['team','visits','recommendations','tasks','reports','attachments','activities','consultations'];
 if (current_user() && in_array($page, $modulePages, true)) { require __DIR__ . '/workspace.php'; exit; }
 
 if ($page === 'logout') {
@@ -117,7 +117,7 @@ if ($user) {
 ?><!doctype html>
 <html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title><?= e($pageTitle ?? 'Agro') ?> · Germina</title><link rel="stylesheet" href="assets/app.css?v=20261124g">
+<title><?= e($pageTitle ?? 'Agro') ?> · Germina</title><link rel="stylesheet" href="assets/app.css?v=20261124h">
 </head><body>
 <?php if (!$user): ?>
 <div class="auth-shell"><div class="auth-brand"><span class="brand-mark">✳</span><span>Germina</span></div>
