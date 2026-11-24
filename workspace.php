@@ -217,15 +217,17 @@ function module_rows(string $sql,array $ids): array {
  catch(Throwable $e){error_log('Germina workspace query failed: '.$e->getMessage());return [];}
 }
 $activities=[];$visits=[];$recs=[];$tasks=[];$equipment=[];$stock=[];$equipmentLogs=[];$maintenance=[];$fields=[];
-$consultationProperty=null;$consultationMessages=[];
+$consultationProperty=null;$consultationMessages=[];$consultationError='';
 if($page==='consultations'){
  if($props){
   $requestedId=(int)($_GET['id']??$props[0]['id']);
   $consultationProperty=module_property($requestedId);
   if(!$consultationProperty){$consultationProperty=module_property((int)$props[0]['id']);}
   if($consultationProperty){
-   $st=db()->prepare('SELECT m.*,u.name sender_name FROM consultation_messages m JOIN users u ON u.id=m.sender_id WHERE m.property_id=? ORDER BY m.id DESC LIMIT 100');
-   $st->execute([$consultationProperty['id']]);$consultationMessages=array_reverse($st->fetchAll());
+   try{
+    $st=db()->prepare('SELECT m.*,u.name sender_name FROM consultation_messages m JOIN users u ON u.id=m.sender_id WHERE m.property_id=? ORDER BY m.id DESC LIMIT 100');
+    $st->execute([$consultationProperty['id']]);$consultationMessages=array_reverse($st->fetchAll());
+   }catch(Throwable $e){error_log('Germina consultation history: '.$e->getMessage());$consultationError='O recurso de Consultas ainda precisa ser preparado no banco de dados. Execute upgrade_consultas.php uma única vez.';}
   }
  }
 }
@@ -310,11 +312,12 @@ $moduleIconSvg=[
 <?php elseif($page==='reports'):?>
 <div class="page-intro"><h2>Relatórios operacionais</h2><p>Resumo consolidado das propriedades às quais você tem acesso.</p></div><div class="stats"><article class="stat"><span>Propriedades</span><strong><?=count($props)?></strong></article><article class="stat"><span>Atividades</span><strong><?=count($activities)?></strong></article><article class="stat"><span>Visitas técnicas</span><strong><?=count($visits)?></strong></article></div><div class="panel"><div class="panel-head"><div><h3>Resumo por propriedade</h3><p>Indicadores para acompanhamento e impressão.</p></div><button class="btn primary" onclick="window.print()">Imprimir / salvar PDF</button></div><div class="table-wrap"><table><thead><tr><th>Propriedade</th><th>Área (ha)</th><th>Talhões</th></tr></thead><tbody><?php foreach($props as $p):?><tr><td><?=e($p['name'])?></td><td><?=e((string)($p['area_ha']??'—'))?></td><td><?=e((string)$p['field_count'])?></td></tr><?php endforeach;?></tbody></table></div></div>
 <?php elseif($page==='consultations'):?>
+<?php if($consultationError):?><div class="alert"><?=e($consultationError)?></div><?php endif;?>
 <div class="consultation-intro"><div><h2>Comunicação entre produtor e profissional</h2><p>Converse diretamente dentro do Germina. As mensagens e os arquivos ficam vinculados à propriedade e só são visíveis para quem tem acesso aprovado.</p></div><span class="consultation-secure">Acesso controlado</span></div>
 <?php if(!$props):?><div class="panel empty"><strong>Nenhuma propriedade disponível</strong><p>Cadastre uma propriedade ou solicite acesso a uma propriedade compartilhada para iniciar uma consulta.</p><a class="btn primary" href="index.php?page=team">Equipe e acessos</a></div>
 <?php elseif($consultationProperty):?>
 <div class="consultation-property-picker"><form method="get"><input type="hidden" name="page" value="consultations"><label>Conversa da propriedade<select name="id" onchange="this.form.submit()"><?php foreach($props as $cp):?><option value="<?=(int)$cp['id']?>" <?=((int)$consultationProperty['id']===(int)$cp['id']?'selected':'')?>><?=e($cp['name'])?></option><?php endforeach;?></select></label></form><span><?=count($consultationMessages)?> mensagens recentes</span></div>
-<section class="consultation-chat" data-consultation-chat data-property-id="<?=(int)$consultationProperty['id']?>" data-last-id="<?=(int)($consultationMessages?end($consultationMessages)['id']:0)?>">
+<section class="consultation-chat" data-consultation-chat data-user-id="<?=(int)$user['id']?>" data-property-id="<?=(int)$consultationProperty['id']?>" data-last-id="<?=(int)($consultationMessages?end($consultationMessages)['id']:0)?>">
  <div class="consultation-chat-head"><span class="consultation-avatar">✳</span><div><strong><?=e($consultationProperty['name'])?></strong><small>Produtor e profissionais autorizados</small></div><span class="consultation-online">Conversa da propriedade</span></div>
  <div class="consultation-messages" id="consultationMessages">
  <?php if(!$consultationMessages):?><div class="consultation-empty"><span>✉</span><strong>Comece a conversa</strong><p>Envie uma mensagem, foto, áudio, vídeo ou documento para iniciar o atendimento.</p></div><?php else:foreach($consultationMessages as $cm):$mine=(int)$cm['sender_id']===(int)$user['id'];?><article class="consultation-message <?=$mine?'mine':'theirs'?>" data-message-id="<?=(int)$cm['id']?>"><div class="consultation-message-meta"><strong><?=e($mine?'Você':$cm['sender_name'])?></strong><time><?=date('d/m/Y H:i',strtotime($cm['created_at']))?></time></div><?php if($cm['message_text']):?><p><?=nl2br(e($cm['message_text']))?></p><?php endif;?><?php if($cm['stored_name']):?><div class="consultation-attachment"><?php if(str_starts_with($cm['mime_type'],'image/')):?><a href="consultation_download.php?id=<?=(int)$cm['id']?>" target="_blank"><img src="consultation_download.php?id=<?=(int)$cm['id']?>&inline=1" alt="<?=e($cm['original_name'])?>"></a><?php elseif(str_starts_with($cm['mime_type'],'audio/')):?><audio controls preload="none" src="consultation_download.php?id=<?=(int)$cm['id']?>&inline=1"></audio><?php elseif(str_starts_with($cm['mime_type'],'video/')):?><video controls preload="none" src="consultation_download.php?id=<?=(int)$cm['id']?>&inline=1"></video><?php endif;?><a class="consultation-file-link" href="consultation_download.php?id=<?=(int)$cm['id']?>"><?=e($cm['original_name'])?> · <?=number_format((int)$cm['file_size']/1024,0,',','.')?> KB</a></div><?php endif;?></article><?php endforeach;endif;?>
@@ -375,7 +378,7 @@ document.querySelectorAll('[data-copy-code]').forEach(button=>button.addEventLis
  let last=Number(chat.dataset.lastId||0);
  function addMessage(m){
   const empty=list.querySelector('.consultation-empty');if(empty)empty.remove();
-  const mine=Number(m.sender_id)===Number(window.GERMINA_USER_ID||0);
+  const mine=Number(m.sender_id)===Number(chat.dataset.userId||0);
   const article=document.createElement('article');article.className='consultation-message '+(mine?'mine':'theirs');article.dataset.messageId=m.id;
   const meta=document.createElement('div');meta.className='consultation-message-meta';
   const name=document.createElement('strong');name.textContent=mine?'Você':m.sender_name;
