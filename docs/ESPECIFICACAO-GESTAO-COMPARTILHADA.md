@@ -370,3 +370,29 @@ Não guardar arquivos de usuários no repositório Git. Não publicar `config.ph
 ## 17. Próxima atividade de desenvolvimento
 
 Antes de escrever a primeira migration, confirmar o schema real de `users`, `properties`, `property_members`, `attachments`, `fields`, `activities` e `storage/`, além das versões e limites do PHP/MySQL no servidor. Em seguida, implementar somente a Fase 1 em branch/commit isolado, revisar o diff, testar em banco de cópia e só então orientar publicação na hospedagem.
+
+## Implementação adicional — Consultas internas
+
+O módulo **Consultas** oferece uma sala de conversa vinculada a cada propriedade compartilhada. O produtor responsável e todos os profissionais com acesso aprovado àquela propriedade participam do mesmo histórico.
+
+### Escopo da primeira versão
+- Mensagens de texto com histórico persistido no banco.
+- Envio de imagens, PDF, documentos comuns, áudio e vídeo.
+- Pré-visualização de imagens e reprodução de áudio/vídeo compatíveis com o navegador.
+- Atualização automática das mensagens a cada 10 segundos, sem serviço de mensageria externo.
+- Controle de acesso por propriedade: somente proprietário e membros ativos podem ler, enviar e baixar anexos.
+- Arquivos com nomes aleatórios no diretório privado `storage/`; o download passa por endpoint autenticado e não expõe o caminho físico.
+- Validação de MIME no servidor por `finfo`, lista de formatos permitidos e limite de 20 MB por arquivo, sujeito aos limites reais de PHP e da hospedagem.
+
+### Estrutura de dados
+A tabela `consultation_messages` armazena propriedade, remetente, texto opcional, metadados do anexo e data. A sala é compartilhada por propriedade: todos os participantes autorizados daquela propriedade veem o mesmo histórico.
+
+### Limitações da primeira versão
+- Não há chamadas de voz/vídeo ao vivo; o módulo envia gravações e arquivos de áudio/vídeo.
+- Não há criptografia ponta a ponta; o acesso é protegido pela autenticação e autorização da aplicação e pelo armazenamento privado.
+- Não há confirmação de leitura, indicador de digitação, notificações push ou conversas privadas individuais entre vários profissionais da mesma propriedade.
+- A atualização de novas mensagens usa consulta periódica a cada 10 segundos.
+- O tamanho efetivo de upload depende das diretivas `upload_max_filesize` e `post_max_size`, além do espaço e da transferência disponíveis na hospedagem.
+
+### Implantação
+Após publicar os arquivos, fazer backup do banco e executar `upgrade_consultas.php` uma única vez. Confirmar a criação da tabela `consultation_messages` e excluir o script de migração do servidor. Nunca executar `install.php` para esta atualização.
