@@ -1,16 +1,50 @@
-# Agro — plataforma de gestão e acompanhamento agrícola
+# Agro — versão PHP/MySQL para hospedagem compartilhada
 
-> Nome de repositório/projeto provisório. A marca comercial será definida após pesquisa de anterioridade.
+O projeto foi direcionado para hospedagem tradicional com PHP e MySQL (como InfinityFree). Não depende de Node.js, Next.js, Supabase, serviços externos ou processo em segundo plano.
 
-Plataforma web responsiva para conectar produtores rurais e profissionais do agro, organizando propriedades, talhões, safras, atividades de campo, visitas técnicas, recomendações e relatórios.
+## Recursos iniciais
+- Cadastro e login com senha armazenada usando `password_hash()`
+- Sessões PHP e proteção CSRF nos formulários
+- Cadastro de propriedades rurais
+- Cadastro de talhões e cultura
+- Diário de atividades por propriedade
+- Consultas SQL preparadas com PDO
+- Isolamento dos dados por proprietário
+- Layout responsivo para celular e computador
 
-## Direção visual
+## Requisitos
+- PHP 8.1 ou superior
+- MySQL 5.7+ ou MariaDB compatível
+- Extensão PDO MySQL habilitada
+- Apache com suporte a `.htaccess`
 
-- Estilo moderno e profissional
-- Verde principal: `#1F6B45`
-- Verde de destaque: `#2F855A`
-- Fundos neutros, tipografia legível e componentes discretos
+## Instalação no InfinityFree
+1. Crie um banco MySQL no painel da hospedagem.
+2. Copie `config.example.php` para `config.php`.
+3. Edite `config.php` com host, nome do banco, usuário e senha fornecidos pelo painel. Não use localhost se o painel informar outro host.
+4. Envie todos os arquivos e pastas para `htdocs` pelo Gerenciador de Arquivos ou FTP.
+5. Acesse `https://SEU-DOMINIO/install.php` uma vez para criar as tabelas.
+6. Exclua `install.php` do servidor após a instalação.
+7. Acesse o site e crie a primeira conta em “Criar conta”.
 
-## Estado
+## Segurança
+- Nunca envie `config.php` ao GitHub; ele contém credenciais do banco.
+- Não deixe `install.php` no servidor após a instalação.
+- O MVP limita a visualização de propriedades ao usuário proprietário. Compartilhamento com profissionais será implementado em etapa posterior com convites e permissões explícitas.
+- Use HTTPS e uma senha forte para a conta e para o banco.
+- Este projeto é uma base de testes, ainda não uma aplicação pronta para produção.
 
-Repositório inicializado. A arquitetura e o MVP serão implementados em etapas, preservando a segurança multiusuário e o controle de acesso aos dados rurais.
+## Estrutura
+```
+app/bootstrap.php
+assets/app.css
+config.example.php
+index.php
+install.php
+```
+
+## Próximas etapas
+1. Testar a instalação no ambiente real do InfinityFree.
+2. Implementar edição/exclusão, compartilhamento profissional-produtor e permissões.
+3. Adicionar visitas técnicas, relatórios PDF e anexos.
+4. Implementar backups/exportação e auditoria.
