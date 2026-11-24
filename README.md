@@ -19,6 +19,8 @@ O projeto foi direcionado para hospedagem tradicional com PHP e MySQL (como Infi
 - Apache com suporte a `.htaccess`
 
 ## Instalação no InfinityFree
+
+Consulte também o passo a passo completo em [DEPLOY_INFINITYFREE.md](DEPLOY_INFINITYFREE.md).
 1. Crie um banco MySQL no painel da hospedagem.
 2. Copie `config.example.php` para `config.php`.
 3. Edite `config.php` com host, nome do banco, usuário e senha fornecidos pelo painel. Não use localhost se o painel informar outro host.
@@ -33,6 +35,10 @@ O projeto foi direcionado para hospedagem tradicional com PHP e MySQL (como Infi
 - O MVP limita a visualização de propriedades ao usuário proprietário. Compartilhamento com profissionais será implementado em etapa posterior com convites e permissões explícitas.
 - Use HTTPS e uma senha forte para a conta e para o banco.
 - Este projeto é uma base de testes, ainda não uma aplicação pronta para produção.
+
+## Diagnóstico
+
+Depois de enviar os arquivos, abra `https://SEU-DOMINIO/diagnostico.php` para verificar PHP, PDO MySQL e conexão com o banco. Exclua `diagnostico.php` depois de usar.
 
 ## Estrutura
 ```
