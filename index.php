@@ -136,7 +136,7 @@ if ($user) {
 <?php endif; ?>
 </section><p class="auth-caption">Gestão simples para quem vive o campo.</p></div>
 <?php else: ?>
-<div class="layout"><aside class="sidebar"><a class="brand" href="index.php"><span class="brand-mark">✳</span><span>Agro<small>GESTÃO NO CAMPO</small></span></a><div class="nav-label">MENU PRINCIPAL</div>
+<div class="layout"><aside class="sidebar" id="appSidebar"><a class="brand" href="index.php"><span class="brand-mark">✳</span><span>Agro<small>GESTÃO NO CAMPO</small></span></a><div class="nav-label">MENU PRINCIPAL</div>
 <a class="nav-link <?= $page==='dashboard'?'active':'' ?>" href="index.php"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="5" rx="2"/><rect x="13" y="10" width="8" height="11" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/></svg></span><span>Visão geral</span></a>
 <a class="nav-link <?= $page==='properties' || $page==='property'?'active':'' ?>" href="index.php?page=properties"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V21H3z"/><path d="M9 21v-7h6v7"/></svg></span><span>Propriedades</span></a>
 <a class="nav-link <?= $page==='activities'?'active':'' ?>" href="index.php?page=activities"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m0 14h16M7 15l4-4 3 2 5-7"/></svg></span><span>Diário de campo</span></a>
@@ -146,8 +146,8 @@ if ($user) {
 <a class="nav-link <?= $page==='tasks'?'active':'' ?>" href="index.php?page=tasks"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="m8 12 2.5 2.5L16 9m-8-3h8"/></svg></span><span>Tarefas</span></a>
 <a class="nav-link <?= $page==='reports'?'active':'' ?>" href="index.php?page=reports"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V4m0 16h17"/><rect x="7" y="12" width="3" height="5" rx="1"/><rect x="13" y="8" width="3" height="9" rx="1"/><rect x="19" y="5" width="2" height="12" rx="1"/></svg></span><span>Relatórios</span></a>
 <a class="nav-link <?= $page==='attachments'?'active':'' ?>" href="index.php?page=attachments"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 12 6.5-6.5a4 4 0 0 1 5.7 5.7l-9 9a6 6 0 0 1-8.5-8.5l9-9"/></svg></span><span>Arquivos</span></a>
-<div class="sidebar-bottom"><div class="avatar"><?= e(strtoupper(substr($user['name'],0,1))) ?></div><div class="user-meta"><strong><?= e($user['name']) ?></strong><small><?= $user['role']==='professional'?'Profissional':'Produtor rural' ?></small></div><form method="post" action="index.php?page=logout"><?= csrf_field() ?><button class="logout" title="Sair">↗</button></form></div></aside>
-<main class="main"><header class="topbar"><div><div class="breadcrumb">Workspace / <?= e($page==='dashboard'?'Visão geral':($page==='property'?'Propriedade':($page==='activities'?'Diário de campo':'Propriedades'))) ?></div><h1><?= e($page==='dashboard'?'Visão geral':($page==='property'?'Detalhes da propriedade':($page==='activities'?'Diário de campo':'Propriedades'))) ?></h1></div><div class="top-actions"><span class="user-chip"><?= e($user['name']) ?></span></div></header>
+<div class="sidebar-bottom"><div class="avatar"><?= e(strtoupper(substr($user['name'],0,1))) ?></div><div class="user-meta"><strong><?= e($user['name']) ?></strong><small><?= $user['role']==='professional'?'Profissional':'Produtor rural' ?></small></div><form method="post" action="index.php?page=logout"><?= csrf_field() ?><button class="logout" title="Sair">↗</button></form></div></aside><button class="sidebar-backdrop" type="button" aria-label="Fechar menu" data-sidebar-close></button>
+<main class="main"><header class="topbar"><button class="menu-toggle" type="button" aria-label="Abrir menu" aria-controls="appSidebar" aria-expanded="false" data-sidebar-toggle><span></span><span></span><span></span></button><div><div class="breadcrumb">Workspace / <?= e($page==='dashboard'?'Visão geral':($page==='property'?'Propriedade':($page==='activities'?'Diário de campo':'Propriedades'))) ?></div><h1><?= e($page==='dashboard'?'Visão geral':($page==='property'?'Detalhes da propriedade':($page==='activities'?'Diário de campo':'Propriedades'))) ?></h1></div><div class="top-actions"><span class="user-chip"><?= e($user['name']) ?></span></div></header>
 <div class="content">
 <?php if ($notice): ?><div class="success"><?= e($notice) ?></div><?php endif; ?>
 <?php foreach ($errors as $error): ?><div class="alert"><?= e($error) ?></div><?php endforeach; ?>
@@ -178,4 +178,22 @@ $st=db()->prepare('SELECT a.*,f.name AS field_name,u.name AS author FROM activit
 <?php else: ?><div class="panel empty"><strong>Página não encontrada</strong><a href="index.php">Voltar ao início</a></div><?php endif; ?>
 <footer class="footer">Agro · Ambiente de testes · <?= date('Y') ?></footer></div></main></div>
 <?php endif; ?>
+<script>
+(function(){
+  const body=document.body;
+  const toggle=document.querySelector('[data-sidebar-toggle]');
+  const close=document.querySelectorAll('[data-sidebar-close], .sidebar .nav-link');
+  const sidebar=document.getElementById('appSidebar');
+  if(!toggle||!sidebar)return;
+  function setOpen(open){
+    body.classList.toggle('sidebar-open',open);
+    toggle.setAttribute('aria-expanded',open?'true':'false');
+    toggle.setAttribute('aria-label',open?'Fechar menu':'Abrir menu');
+  }
+  toggle.addEventListener('click',()=>setOpen(!body.classList.contains('sidebar-open')));
+  close.forEach(el=>el.addEventListener('click',()=>setOpen(false)));
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')setOpen(false)});
+  window.addEventListener('resize',()=>{if(window.innerWidth>850)setOpen(false)});
+})();
+</script>
 </body></html>
