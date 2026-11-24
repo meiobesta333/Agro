@@ -13,7 +13,7 @@ O projeto foi direcionado para hospedagem tradicional com PHP e MySQL (como Infi
 - Layout responsivo para celular e computador
 
 ## Requisitos
-- PHP 8.1 ou superior
+- PHP 8.1 ou superior (InfinityFree informa PHP 8.4 no hosting gratuito)
 - MySQL 5.7+ ou MariaDB compatível
 - Extensão PDO MySQL habilitada
 - Apache com suporte a `.htaccess`
@@ -23,8 +23,8 @@ O projeto foi direcionado para hospedagem tradicional com PHP e MySQL (como Infi
 2. Copie `config.example.php` para `config.php`.
 3. Edite `config.php` com host, nome do banco, usuário e senha fornecidos pelo painel. Não use localhost se o painel informar outro host.
 4. Envie todos os arquivos e pastas para `htdocs` pelo Gerenciador de Arquivos ou FTP.
-5. Acesse `https://SEU-DOMINIO/install.php` uma vez para criar as tabelas.
-6. Exclua `install.php` do servidor após a instalação.
+5. Acesse `https://SEU-DOMINIO/install.php` uma única vez para criar as tabelas. O instalador grava um marcador para impedir uma segunda instalação acidental.
+6. Exclua `install.php` do servidor imediatamente após a instalação.
 7. Acesse o site e crie a primeira conta em “Criar conta”.
 
 ## Segurança
