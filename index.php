@@ -65,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($page === 'field_create') {
             $propertyId = (int)($_POST['property_id'] ?? 0);
             $property = find_accessible_property($propertyId);
-            if (!$property) throw new RuntimeException('Propriedade não encontrada ou sem permissão.');
+            if (!$property || !can_edit_property($property)) throw new RuntimeException('Você não tem permissão para alterar esta propriedade.');
             $name = trim((string)($_POST['name'] ?? ''));
             $area = trim((string)($_POST['area_ha'] ?? ''));
             $crop = trim((string)($_POST['crop_name'] ?? ''));
@@ -79,7 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($page === 'activity_create') {
             $propertyId = (int)($_POST['property_id'] ?? 0);
             $property = find_accessible_property($propertyId);
-            if (!$property) throw new RuntimeException('Propriedade não encontrada ou sem permissão.');
+            if (!$property || !can_edit_property($property)) throw new RuntimeException('Você não tem permissão para registrar atividades nesta propriedade.');
             $fieldId = (int)($_POST['field_id'] ?? 0);
             if ($fieldId > 0) {
                 $check = db()->prepare('SELECT id FROM fields WHERE id=? AND property_id=?');
