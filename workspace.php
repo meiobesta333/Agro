@@ -53,23 +53,75 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
    $st->execute([$eid,$eq['property_id'],$user['id'],$_POST['maintenance_date']?:date('Y-m-d'),in_array($_POST['maintenance_type']??'',['preventive','corrective'],true)?$_POST['maintenance_type']:'preventive',$desc,(float)($_POST['cost']??0),$_POST['next_due_date']?:null,trim((string)($_POST['provider']??''))?:null]);
    flash('Manutenção registrada.');redirect('index.php?page=activities&tab=maintenance');
   }
-  if($action==='invite'){
+  if($action==='generate_access_code'){
    $pid=(int)($_POST['property_id']??0);$p=module_require_property($pid,true);
-   if((int)$p['owner_id']!==(int)$user['id'])throw new RuntimeException('Somente o produtor responsável pode convidar profissionais.');
-   $email=strtolower(trim((string)($_POST['email']??'')));$permission=$_POST['permission']??'view';
-   if(!filter_var($email,FILTER_VALIDATE_EMAIL))throw new RuntimeException('Informe um e-mail válido.');
-   if(!in_array($permission,['view','edit','manage'],true))$permission='view';
-   $st=db()->prepare("SELECT id,role FROM users WHERE email=?");$st->execute([$email]);$member=$st->fetch();
-   if(!$member)throw new RuntimeException('Esse usuário ainda não possui conta no Agro. Peça que faça o cadastro primeiro.');
-   if((int)$member['id']===(int)$user['id'])throw new RuntimeException('Você já é o responsável pela propriedade.');
-   $st=db()->prepare("INSERT INTO property_members(property_id,user_id,permission,invited_by) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE permission=VALUES(permission)");
-   $st->execute([$pid,$member['id'],$permission,$user['id']]);flash('Acesso compartilhado com sucesso.');
-   redirect('index.php?page=team&id='.$pid);
+   if((int)$p['owner_id']!==(int)$user['id'])throw new RuntimeException('Somente o produtor responsável pode gerar um código.');
+   $code=strtoupper(bin2hex(random_bytes(8)));
+   $pdo=db();$pdo->beginTransaction();
+   try{
+    $pdo->prepare("UPDATE property_access_requests r JOIN property_access_codes c ON c.id=r.access_code_id SET r.status='rejected',r.decided_by=?,r.decided_at=NOW(),r.decision_note='Código renovado pelo produtor' WHERE c.property_id=? AND c.status='pending' AND r.status='pending'")->execute([$user['id'],$pid]);
+    $pdo->prepare("UPDATE property_access_codes SET status='revoked',revoked_at=NOW() WHERE property_id=? AND status IN ('active','pending')")->execute([$pid]);
+    $st=$pdo->prepare("INSERT INTO property_access_codes(property_id,code_hash,status,created_by,expires_at) VALUES(?,?,'active',?,DATE_ADD(NOW(),INTERVAL 7 DAY))");
+    $st->execute([$pid,hash('sha256',strtolower($code)),$user['id']]);
+    $pdo->commit();
+   }catch(Throwable $e){$pdo->rollBack();throw $e;}
+   $_SESSION['new_access_code']=['property_id'=>$pid,'code'=>$code];
+   flash('Código gerado. Copie-o agora e envie ao profissional.');redirect('index.php?page=team');
+  }
+  if($action==='request_access'){
+   if($user['role']!=='professional')throw new RuntimeException('Somente contas de profissional podem solicitar acesso por código.');
+   $code=strtolower(preg_replace('/[\\s-]+/','',(string)($_POST['access_code']??'')));
+   if(!preg_match('/^[a-f0-9]{16}$/',$code))throw new RuntimeException('Código inválido. Confira os 16 caracteres informados.');
+   $pdo=db();$pdo->beginTransaction();
+   try{
+    $st=$pdo->prepare("SELECT c.id,c.property_id,c.status,c.expires_at,p.owner_id FROM property_access_codes c JOIN properties p ON p.id=c.property_id WHERE c.code_hash=? FOR UPDATE");
+    $st->execute([hash('sha256',$code)]);$accessCode=$st->fetch();
+    if(!$accessCode||$accessCode['status']!=='active'||strtotime($accessCode['expires_at'])<=time())throw new RuntimeException('Código inválido, expirado ou já utilizado.');
+    if((int)$accessCode['owner_id']===(int)$user['id'])throw new RuntimeException('Você não pode solicitar acesso à sua própria propriedade.');
+    $st=$pdo->prepare('SELECT id FROM property_members WHERE property_id=? AND user_id=?');$st->execute([$accessCode['property_id'],$user['id']]);
+    if($st->fetch())throw new RuntimeException('Você já tem acesso a esta propriedade.');
+    $st=$pdo->prepare("SELECT id FROM property_access_requests WHERE property_id=? AND requested_by=? AND status='pending'");$st->execute([$accessCode['property_id'],$user['id']]);
+    if($st->fetch())throw new RuntimeException('Você já possui uma solicitação pendente para esta propriedade.');
+    $st=$pdo->prepare("INSERT INTO property_access_requests(property_id,access_code_id,requested_by,status) VALUES(?,?,?,'pending')");
+    $st->execute([$accessCode['property_id'],$accessCode['id'],$user['id']]);
+    $pdo->prepare("UPDATE property_access_codes SET status='pending' WHERE id=? AND status='active'")->execute([$accessCode['id']]);
+    $pdo->commit();
+   }catch(Throwable $e){$pdo->rollBack();throw $e;}
+   flash('Solicitação enviada. O produtor precisa aprovar seu acesso.');redirect('index.php?page=team');
+  }
+  if($action==='approve_access'){
+   $requestId=(int)($_POST['request_id']??0);$permission=in_array($_POST['permission']??'',['view','edit'],true)?$_POST['permission']:'view';
+   $pdo=db();$pdo->beginTransaction();
+   try{
+    $st=$pdo->prepare("SELECT r.id,r.property_id,r.access_code_id,r.requested_by,r.status,c.status code_status,p.owner_id FROM property_access_requests r JOIN property_access_codes c ON c.id=r.access_code_id JOIN properties p ON p.id=r.property_id WHERE r.id=? FOR UPDATE");
+    $st->execute([$requestId]);$request=$st->fetch();
+    if(!$request||$request['status']!=='pending'||$request['code_status']!=='pending'||(int)$request['owner_id']!==(int)$user['id'])throw new RuntimeException('Solicitação não encontrada ou não está mais pendente.');
+    $st=$pdo->prepare("INSERT INTO property_members(property_id,user_id,permission,invited_by) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE permission=VALUES(permission)");
+    $st->execute([$request['property_id'],$request['requested_by'],$permission,$user['id']]);
+    $pdo->prepare("UPDATE property_access_requests SET status='approved',decided_by=?,decided_at=NOW() WHERE id=?")->execute([$user['id'],$requestId]);
+    $pdo->prepare("UPDATE property_access_codes SET status='used',used_at=NOW() WHERE id=?")->execute([$request['access_code_id']]);
+    $pdo->commit();
+   }catch(Throwable $e){$pdo->rollBack();throw $e;}
+   flash('Acesso aprovado. O profissional já pode acessar a propriedade.');redirect('index.php?page=team');
+  }
+  if($action==='reject_access'){
+   $requestId=(int)($_POST['request_id']??0);$pdo=db();$pdo->beginTransaction();
+   try{
+    $st=$pdo->prepare("SELECT r.id,r.access_code_id,r.status,c.expires_at,p.owner_id FROM property_access_requests r JOIN property_access_codes c ON c.id=r.access_code_id JOIN properties p ON p.id=r.property_id WHERE r.id=? FOR UPDATE");
+    $st->execute([$requestId]);$request=$st->fetch();
+    if(!$request||$request['status']!=='pending'||(int)$request['owner_id']!==(int)$user['id'])throw new RuntimeException('Solicitação não encontrada ou não está mais pendente.');
+    $pdo->prepare("UPDATE property_access_requests SET status='rejected',decided_by=?,decided_at=NOW() WHERE id=?")->execute([$user['id'],$requestId]);
+    $pdo->prepare("UPDATE property_access_codes SET status=IF(expires_at>NOW(),'active','revoked') WHERE id=? AND status='pending'")->execute([$request['access_code_id']]);
+    $pdo->commit();
+   }catch(Throwable $e){$pdo->rollBack();throw $e;}
+   flash('Solicitação rejeitada.');redirect('index.php?page=team');
   }
   if($action==='remove_member'){
-   $pid=(int)$_POST['property_id'];$p=module_require_property($pid,true);
-   if((int)$p['owner_id']!==(int)$user['id'])throw new RuntimeException('Somente o responsável pode remover membros.');
-   $st=db()->prepare('DELETE FROM property_members WHERE property_id=? AND user_id=?');$st->execute([$pid,(int)$_POST['member_id']]);flash('Acesso removido.');redirect('index.php?page=team&id='.$pid);
+   $pid=(int)($_POST['property_id']??0);$p=module_require_property($pid,true);
+   if((int)$p['owner_id']!==(int)$user['id'])throw new RuntimeException('Somente o produtor responsável pode remover membros.');
+   $memberId=(int)($_POST['member_id']??0);
+   $st=db()->prepare('DELETE FROM property_members WHERE property_id=? AND user_id=?');$st->execute([$pid,$memberId]);
+   flash('Acesso do profissional revogado.');redirect('index.php?page=team');
   }
   if($action==='visit'){
    $pid=(int)$_POST['property_id'];module_require_property($pid,true);
@@ -119,6 +171,23 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
  }catch(Throwable $e){$errors[]=$e instanceof PDOException?'Não foi possível salvar. Verifique os dados e tente novamente.':$e->getMessage();}
 }
 $props=module_properties();$ids=array_map(fn($p)=>(int)$p['id'],$props);
+$newAccessCode=$_SESSION['new_access_code']??null;unset($_SESSION['new_access_code']);
+$incomingRequests=[];$myAccessRequests=[];$activeAccessCodes=[];
+if($page==='team'){
+ if($user['role']==='professional'){
+  $st=db()->prepare("SELECT r.id,r.status,r.requested_at,p.name property_name,u.name owner_name FROM property_access_requests r JOIN properties p ON p.id=r.property_id JOIN users u ON u.id=p.owner_id WHERE r.requested_by=? ORDER BY r.requested_at DESC LIMIT 30");
+  $st->execute([$user['id']]);$myAccessRequests=$st->fetchAll();
+ }else{
+  $ownerIds=array_values(array_map(fn($p)=>(int)$p['id'],array_filter($props,fn($p)=>(int)$p['owner_id']===(int)$user['id'])));
+  if($ownerIds){
+   $ownerSql=implode(',',array_fill(0,count($ownerIds),'?'));
+   $st=db()->prepare("SELECT r.id,r.property_id,r.requested_at,p.name property_name,u.name professional_name,u.email professional_email FROM property_access_requests r JOIN properties p ON p.id=r.property_id JOIN users u ON u.id=r.requested_by WHERE r.property_id IN ($ownerSql) AND p.owner_id=? AND r.status='pending' ORDER BY r.requested_at ASC");
+   $st->execute([...$ownerIds,$user['id']]);$incomingRequests=$st->fetchAll();
+   $st=db()->prepare("SELECT id,property_id,status,expires_at FROM property_access_codes WHERE property_id IN ($ownerSql) AND status IN ('active','pending') AND expires_at>NOW() ORDER BY created_at DESC");
+   $st->execute($ownerIds);$activeAccessCodes=$st->fetchAll();
+  }
+ }
+}
 $idsSql=$ids?implode(',',array_fill(0,count($ids),'?')):'0';
 function module_rows(string $sql,array $ids): array { if(!$ids)return []; $st=db()->prepare($sql);$st->execute($ids);return $st->fetchAll(); }
 $activities=$ids?module_rows("SELECT a.*,p.name property_name FROM activities a JOIN properties p ON p.id=a.property_id WHERE a.property_id IN ($idsSql) ORDER BY a.activity_date DESC LIMIT 100",$ids):[];
@@ -162,10 +231,21 @@ $moduleIconSvg=[
 <div class="stats"><article class="stat"><span>Propriedades acessíveis</span><strong><?=count($props)?></strong><small>próprias e compartilhadas</small></article><article class="stat"><span>Talhões</span><strong><?=count($fields)?></strong><small>nas propriedades acessíveis</small></article><article class="stat"><span>Tarefas em aberto</span><strong><?=count(array_filter($tasks,fn($t)=>in_array($t['status'],['open','doing'],true)))?></strong><small>pendentes ou em andamento</small></article></div>
 <div class="module-grid"><?php $dashboardModules=['team'=>['Equipe e acessos','Convide profissionais e organize permissões.','team'],'visits'=>['Visitas técnicas','Histórico de atendimentos e acompanhamento.','visits'],'recommendations'=>['Recomendações','Orientações e prioridades técnicas.','recommendations'],'tasks'=>['Tarefas','Planeje atividades e acompanhe entregas.','tasks'],'reports'=>['Relatórios','Indicadores e visão consolidada.','reports'],'attachments'=>['Arquivos','Documentos e imagens das propriedades.','attachments']];foreach($dashboardModules as $k=>$m):?><a class="module-card module-card-<?=$k?>" href="index.php?page=<?=$k?>"><span class="module-card-icon"><?=$moduleIconSvg[$m[2]]?></span><span class="module-card-copy"><strong><?=e($m[0])?></strong><small><?=e($m[1])?></small><b>Explorar módulo <span>↗</span></b></span></a><?php endforeach;?></div>
 <?php elseif($page==='team'):?>
-<div class="page-intro"><h2>Compartilhamento com profissionais</h2><p>O produtor pode conceder acesso a profissionais cadastrados no Agro.</p></div>
-<?php foreach($props as $p):?><div class="panel"><div class="panel-head"><div><h3><?=e($p['name'])?></h3><p><?=!empty($p['is_owner'])?'Você é o responsável':'Acesso compartilhado'?></p></div></div>
-<?php if(!empty($p['is_owner'])):?><form method="post" class="form-grid"><?=csrf_field()?><input type="hidden" name="action" value="invite"><input type="hidden" name="property_id" value="<?=(int)$p['id']?>"><label>E-mail do profissional<input name="email" type="email" required placeholder="profissional@email.com"></label><label>Permissão<select name="permission"><option value="view">Visualizar</option><option value="edit">Registrar e editar</option><option value="manage">Gerenciar equipe</option></select></label><div class="form-submit"><button class="btn primary">Conceder acesso</button></div></form><?php endif;?>
-<?php $st=db()->prepare('SELECT pm.*,u.name,u.email,u.role FROM property_members pm JOIN users u ON u.id=pm.user_id WHERE pm.property_id=?');$st->execute([$p['id']]);$members=$st->fetchAll();?><div class="table-wrap"><table><thead><tr><th>Usuário</th><th>Perfil</th><th>Permissão</th><?php if(!empty($p['is_owner'])):?><th></th><?php endif;?></tr></thead><tbody><?php foreach($members as $m):?><tr><td><?=e($m['name'])?><br><small><?=e($m['email'])?></small></td><td><?=e($m['role']==='professional'?'Profissional':'Produtor')?></td><td><?=e(['view'=>'Visualizar','edit'=>'Editar','manage'=>'Gerenciar'][$m['permission']]??$m['permission'])?></td><?php if(!empty($p['is_owner'])):?><td><form method="post"><?=csrf_field()?><input type="hidden" name="action" value="remove_member"><input type="hidden" name="property_id" value="<?=(int)$p['id']?>"><input type="hidden" name="member_id" value="<?=(int)$m['user_id']?>"><button class="btn secondary">Remover</button></form></td><?php endif;?></tr><?php endforeach;?></tbody></table></div></div><?php endforeach;?>
+<div class="page-intro"><h2>Conexões entre produtores e profissionais</h2><p>O produtor compartilha um código; o profissional solicita acesso e aguarda aprovação. Nenhum dado é liberado antes da aprovação.</p></div>
+<?php if($user['role']==='professional'):?>
+<div class="panel form-panel"><div class="panel-head"><div><h3>Adicionar propriedade à carteira</h3><p>Informe o código de convite recebido do produtor. O código tem validade limitada.</p></div></div><form method="post" class="form-grid"><?=csrf_field()?><input type="hidden" name="action" value="request_access"><label class="span-2">Código de acesso<input name="access_code" required minlength="16" maxlength="19" autocomplete="off" placeholder="Ex.: A1B2C3D4E5F60789"></label><div class="form-submit"><button class="btn primary">Solicitar acesso</button></div></form></div>
+<div class="panel"><div class="panel-head"><div><h3>Minhas solicitações</h3><p>Acompanhe os pedidos enviados aos produtores.</p></div></div><?php if(!$myAccessRequests):?><div class="empty">Você ainda não enviou solicitações.</div><?php else:?><div class="table-wrap"><table><thead><tr><th>Propriedade</th><th>Produtor</th><th>Solicitada em</th><th>Status</th></tr></thead><tbody><?php foreach($myAccessRequests as $r):?><tr><td><?=e($r['property_name'])?></td><td><?=e($r['owner_name'])?></td><td><?=date('d/m/Y H:i',strtotime($r['requested_at']))?></td><td><?=e(['pending'=>'Aguardando aprovação','approved'=>'Aprovada','rejected'=>'Rejeitada'][$r['status']]??$r['status'])?></td></tr><?php endforeach;?></tbody></table></div><?php endif;?></div>
+<div class="panel"><div class="panel-head"><div><h3>Minha carteira</h3><p>Propriedades às quais sua conta já tem acesso aprovado.</p></div></div><?php $sharedProps=array_values(array_filter($props,fn($p)=>(int)$p['owner_id']!==(int)$user['id']));?><?php if(!$sharedProps):?><div class="empty">Nenhuma propriedade compartilhada com você ainda.</div><?php else:?><div class="table-wrap"><table><thead><tr><th>Propriedade</th><th>Município</th><th>Permissão</th></tr></thead><tbody><?php foreach($sharedProps as $sp):?><tr><td><?=e($sp['name'])?></td><td><?=e(trim(($sp['city']??'').' / '.($sp['state']??''),' /'))?></td><td><?=e(['view'=>'Visualizar','edit'=>'Registrar e editar','manage'=>'Gerenciar'][$sp['permission']??'view']??'Visualizar')?></td></tr><?php endforeach;?></tbody></table></div><?php endif;?></div>
+<?php else:?>
+<?php if(!$props):?><div class="panel empty">Cadastre uma propriedade para gerar um código e conectar um profissional.</div><?php endif;?>
+<?php foreach($props as $p):if((int)$p['owner_id']!==(int)$user['id'])continue;?>
+<div class="panel"><div class="panel-head"><div><h3><?=e($p['name'])?></h3><p>Compartilhamento controlado pelo produtor responsável.</p></div></div>
+<?php if($newAccessCode && (int)$newAccessCode['property_id']===(int)$p['id']):?><div class="success"><strong>Novo código — copie agora:</strong><p><code id="newAccessCode"><?=e($newAccessCode['code'])?></code> <button type="button" class="btn secondary" data-copy-code>Copiar código</button></p><small>Por segurança, o código não será exibido novamente. Validade: 7 dias. A aprovação continua obrigatória.</small></div><?php endif;?>
+<?php $codeInfo=array_values(array_filter($activeAccessCodes,fn($ac)=>(int)$ac['property_id']===(int)$p['id']));?><div class="form-grid"><div><strong>Código de convite</strong><p class="muted"><?= $codeInfo?'Existe um código '.($codeInfo[0]['status']==='pending'?'aguardando decisão':'ativo').' até '.date('d/m/Y H:i',strtotime($codeInfo[0]['expires_at']):'Nenhum código ativo no momento.'?></p></div><form method="post"><?=csrf_field()?><input type="hidden" name="action" value="generate_access_code"><input type="hidden" name="property_id" value="<?=(int)$p['id']?>"><button class="btn primary"><?= $codeInfo?'Gerar novo código':'Gerar código de convite'?></button></form></div>
+<?php $propertyRequests=array_values(array_filter($incomingRequests,fn($r)=>(int)$r['property_id']===(int)$p['id']));?><h4>Solicitações pendentes</h4><?php if(!$propertyRequests):?><div class="empty compact">Nenhuma solicitação aguardando aprovação.</div><?php else:?><div class="table-wrap"><table><thead><tr><th>Profissional</th><th>Solicitado em</th><th>Permissão ao aprovar</th><th>Ações</th></tr></thead><tbody><?php foreach($propertyRequests as $req):?><tr><td><?=e($req['professional_name'])?><br><small><?=e($req['professional_email'])?></small></td><td><?=date('d/m/Y H:i',strtotime($req['requested_at']))?></td><td><form method="post" class="inline-form"><?=csrf_field()?><input type="hidden" name="action" value="approve_access"><input type="hidden" name="request_id" value="<?=(int)$req['id']?>"><select name="permission"><option value="view">Somente visualizar</option><option value="edit">Visualizar e registrar</option></select><button class="btn primary">Aprovar</button></form></td><td><form method="post"><?=csrf_field()?><input type="hidden" name="action" value="reject_access"><input type="hidden" name="request_id" value="<?=(int)$req['id']?>"><button class="btn secondary">Rejeitar</button></form></td></tr><?php endforeach;?></tbody></table></div><?php endif;?>
+<?php $st=db()->prepare('SELECT pm.user_id,pm.permission,pm.created_at,u.name,u.email FROM property_members pm JOIN users u ON u.id=pm.user_id WHERE pm.property_id=? ORDER BY u.name');$st->execute([$p['id']]);$members=$st->fetchAll();?><h4>Profissionais com acesso</h4><?php if(!$members):?><div class="empty compact">Ainda não há profissionais conectados.</div><?php else:?><div class="table-wrap"><table><thead><tr><th>Profissional</th><th>Permissão</th><th>Desde</th><th></th></tr></thead><tbody><?php foreach($members as $m):?><tr><td><?=e($m['name'])?><br><small><?=e($m['email'])?></small></td><td><?=e(['view'=>'Visualizar','edit'=>'Registrar e editar','manage'=>'Gerenciar'][$m['permission']]??$m['permission'])?></td><td><?=date('d/m/Y',strtotime($m['created_at']))?></td><td><form method="post"><?=csrf_field()?><input type="hidden" name="action" value="remove_member"><input type="hidden" name="property_id" value="<?=(int)$p['id']?>"><input type="hidden" name="member_id" value="<?=(int)$m['user_id']?>"><button class="btn secondary">Revogar acesso</button></form></td></tr><?php endforeach;?></tbody></table></div><?php endif;?>
+</div><?php endforeach;?>
+<?php endif;?>
 <?php elseif($page==='visits'):?>
 <div class="page-intro"><h2>Histórico e agenda de visitas</h2><p>Atendimentos registrados pelos profissionais nas propriedades compartilhadas.</p></div>
 <?php if($user['role']==='professional'):?><div class="panel form-panel"><h3>Registrar visita técnica</h3><form method="post" class="form-grid"><?=csrf_field()?><input type="hidden" name="action" value="visit"><label>Propriedade<select name="property_id" required><?php foreach($props as $p):?><option value="<?=(int)$p['id']?>"><?=e($p['name'])?></option><?php endforeach;?></select></label><label>Data<input type="date" name="visit_date" value="<?=date('Y-m-d')?>"></label><label>Status<select name="visit_status"><option value="scheduled">Agendada</option><option value="completed">Realizada</option></select></label><label class="span-2">Resumo da visita<textarea name="summary" required rows="3"></textarea></label><label class="span-2">Próximos passos<textarea name="next_steps" rows="2"></textarea></label><div class="form-submit"><button class="btn primary">Salvar visita</button></div></form></div><?php endif;?>
