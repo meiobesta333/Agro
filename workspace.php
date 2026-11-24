@@ -189,16 +189,29 @@ if($page==='team'){
  }
 }
 $idsSql=$ids?implode(',',array_fill(0,count($ids),'?')):'0';
-function module_rows(string $sql,array $ids): array { if(!$ids)return []; $st=db()->prepare($sql);$st->execute($ids);return $st->fetchAll(); }
-$activities=$ids?module_rows("SELECT a.*,p.name property_name FROM activities a JOIN properties p ON p.id=a.property_id WHERE a.property_id IN ($idsSql) ORDER BY a.activity_date DESC LIMIT 100",$ids):[];
-$visits=$ids?module_rows("SELECT v.*,p.name property_name,u.name professional_name FROM visits v JOIN properties p ON p.id=v.property_id JOIN users u ON u.id=v.professional_id WHERE v.property_id IN ($idsSql) ORDER BY v.visit_date DESC LIMIT 100",$ids):[];
-$recs=$ids?module_rows("SELECT r.*,p.name property_name,u.name author_name FROM recommendations r JOIN properties p ON p.id=r.property_id JOIN users u ON u.id=r.author_id WHERE r.property_id IN ($idsSql) ORDER BY r.created_at DESC LIMIT 100",$ids):[];
-$tasks=$ids?module_rows("SELECT t.*,p.name property_name,u.name assignee_name FROM tasks t JOIN properties p ON p.id=t.property_id LEFT JOIN users u ON u.id=t.assigned_to WHERE t.property_id IN ($idsSql) ORDER BY t.due_date IS NULL,t.due_date,t.created_at DESC LIMIT 100",$ids):[];
-$equipment=$ids?module_rows("SELECT e.*,p.name property_name FROM farm_equipment e JOIN properties p ON p.id=e.property_id WHERE e.property_id IN ($idsSql) ORDER BY e.name",$ids):[];
-$stock=$ids?module_rows("SELECT s.*,p.name property_name FROM farm_stock_items s JOIN properties p ON p.id=s.property_id WHERE s.property_id IN ($idsSql) ORDER BY s.name",$ids):[];
-$equipmentLogs=$ids?module_rows("SELECT l.*,e.name equipment_name,p.name property_name FROM farm_equipment_logs l JOIN farm_equipment e ON e.id=l.equipment_id JOIN properties p ON p.id=l.property_id WHERE l.property_id IN ($idsSql) ORDER BY l.operation_date DESC,l.id DESC LIMIT 100",$ids):[];
-$maintenance=$ids?module_rows("SELECT m.*,e.name equipment_name,p.name property_name FROM farm_maintenance m JOIN farm_equipment e ON e.id=m.equipment_id JOIN properties p ON p.id=m.property_id WHERE m.property_id IN ($idsSql) ORDER BY m.maintenance_date DESC,m.id DESC LIMIT 100",$ids):[];
-$fields=[];foreach($props as $p){$st=db()->prepare('SELECT id,name FROM fields WHERE property_id=?');$st->execute([$p['id']]);foreach($st->fetchAll() as $f)$fields[]=$f+['property_id'=>$p['id']];}
+function module_rows(string $sql,array $ids): array {
+ if(!$ids)return [];
+ try{$st=db()->prepare($sql);$st->execute($ids);return $st->fetchAll();}
+ catch(Throwable $e){error_log('Germina workspace query failed: '.$e->getMessage());return [];}
+}
+$activities=[];$visits=[];$recs=[];$tasks=[];$equipment=[];$stock=[];$equipmentLogs=[];$maintenance=[];$fields=[];
+$needsActivities=in_array($page,['activities','reports'],true);
+$needsVisits=in_array($page,['visits','reports'],true);
+$needsRecs=$page==='recommendations';
+$needsTasks=in_array($page,['dashboard','tasks'],true);
+$needsDiary=$page==='activities';
+$needsFields=$page==='dashboard'||($page==='activities'&&($_GET['tab']??'overview')==='operations');
+if($ids&&$needsActivities)$activities=module_rows("SELECT a.*,p.name property_name FROM activities a JOIN properties p ON p.id=a.property_id WHERE a.property_id IN ($idsSql) ORDER BY a.activity_date DESC LIMIT 100",$ids);
+if($ids&&$needsVisits)$visits=module_rows("SELECT v.*,p.name property_name,u.name professional_name FROM visits v JOIN properties p ON p.id=v.property_id JOIN users u ON u.id=v.professional_id WHERE v.property_id IN ($idsSql) ORDER BY v.visit_date DESC LIMIT 100",$ids);
+if($ids&&$needsRecs)$recs=module_rows("SELECT r.*,p.name property_name,u.name author_name FROM recommendations r JOIN properties p ON p.id=r.property_id JOIN users u ON u.id=r.author_id WHERE r.property_id IN ($idsSql) ORDER BY r.created_at DESC LIMIT 100",$ids);
+if($ids&&$needsTasks)$tasks=module_rows("SELECT t.*,p.name property_name,u.name assignee_name FROM tasks t JOIN properties p ON p.id=t.property_id LEFT JOIN users u ON u.id=t.assigned_to WHERE t.property_id IN ($idsSql) ORDER BY t.due_date IS NULL,t.due_date,t.created_at DESC LIMIT 100",$ids);
+if($ids&&$needsDiary){
+ $equipment=module_rows("SELECT e.*,p.name property_name FROM farm_equipment e JOIN properties p ON p.id=e.property_id WHERE e.property_id IN ($idsSql) ORDER BY e.name",$ids);
+ $stock=module_rows("SELECT s.*,p.name property_name FROM farm_stock_items s JOIN properties p ON p.id=s.property_id WHERE s.property_id IN ($idsSql) ORDER BY s.name",$ids);
+ $equipmentLogs=module_rows("SELECT l.*,e.name equipment_name,p.name property_name FROM farm_equipment_logs l JOIN farm_equipment e ON e.id=l.equipment_id JOIN properties p ON p.id=l.property_id WHERE l.property_id IN ($idsSql) ORDER BY l.operation_date DESC,l.id DESC LIMIT 100",$ids);
+ $maintenance=module_rows("SELECT m.*,e.name equipment_name,p.name property_name FROM farm_maintenance m JOIN farm_equipment e ON e.id=m.equipment_id JOIN properties p ON p.id=m.property_id WHERE m.property_id IN ($idsSql) ORDER BY m.maintenance_date DESC,m.id DESC LIMIT 100",$ids);
+}
+if($needsFields){try{foreach($props as $p){$st=db()->prepare('SELECT id,name FROM fields WHERE property_id=?');$st->execute([$p['id']]);foreach($st->fetchAll() as $f)$fields[]=$f+['property_id'=>$p['id']];}}catch(Throwable $e){error_log('Germina workspace fields query failed: '.$e->getMessage());}}
 $titleMap=['dashboard'=>'Visão geral','team'=>'Equipe e acessos','visits'=>'Visitas técnicas','recommendations'=>'Recomendações','tasks'=>'Tarefas','reports'=>'Relatórios','attachments'=>'Arquivos','activities'=>'Diário de campo','properties'=>'Propriedades'];
 $title=$titleMap[$page]??'Workspace';
 $moduleUi=[
