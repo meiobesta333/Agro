@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $email = strtolower(trim((string)($_POST['email'] ?? '')));
             $password = (string)($_POST['password'] ?? '');
             $role = in_array($_POST['role'] ?? '', ['producer', 'professional'], true) ? $_POST['role'] : 'producer';
-            if (mb_strlen($name) < 3) throw new RuntimeException('Informe seu nome completo.');
+            if (strlen($name) < 3) throw new RuntimeException('Informe seu nome completo.');
             if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw new RuntimeException('Informe um e-mail válido.');
             if (strlen($password) < 8) throw new RuntimeException('A senha precisa ter pelo menos 8 caracteres.');
             $stmt = db()->prepare('INSERT INTO users (name,email,password_hash,role) VALUES (?,?,?,?)');
