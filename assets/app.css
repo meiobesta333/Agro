@@ -282,3 +282,16 @@ body{font-size:15px;color:#17251c;line-height:1.55}
 @media(max-width:850px){body{font-size:15px}.sidebar .nav-link{font-size:14px!important}.topbar h1{font-size:20px}.content{line-height:1.55}}
 @media(max-width:600px){.welcome h2{font-size:26px}.welcome p,.page-intro p,.module-hero p{font-size:13px}.stat span{font-size:12px}.stat small{font-size:11px}.module-card strong{font-size:13px}.module-card small{font-size:11px}.diary-tabs a{font-size:11px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+
+/* Menu mobile: tipografia ampliada e melhor leitura */
+@media(max-width:850px){
+  .sidebar .nav-link{font-size:16px!important;line-height:1.4!important;min-height:52px!important;height:auto!important;padding:10px 14px!important;font-weight:650!important}
+  .sidebar .nav-label{font-size:12px!important;line-height:1.4!important;margin:18px 8px 9px!important}
+  .sidebar .brand strong,.sidebar .brand span{font-size:18px!important}
+  .sidebar .brand small{font-size:12px!important}
+  .sidebar .user-meta strong{font-size:15px!important}
+  .sidebar .user-meta small{font-size:13px!important}
+  .sidebar .sidebar-bottom a,.sidebar .sidebar-bottom button{font-size:14px!important}
+  .sidebar .nav-icon{width:22px!important;height:22px!important;flex:none}
+}
