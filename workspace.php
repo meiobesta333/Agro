@@ -16,6 +16,28 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
  verify_csrf();
  try{
   $action=(string)($_POST['action']??'');
+  if($action==='consultation_send'){
+   $pid=(int)($_POST['property_id']??0);module_require_property($pid,false);
+   $message=trim((string)($_POST['message']??''));
+   if(mb_strlen($message)>5000)throw new RuntimeException('A mensagem deve ter no máximo 5.000 caracteres.');
+   $stored=null;$original=null;$mime=null;$size=0;
+   if(isset($_FILES['attachment'])&&$_FILES['attachment']['error']!==UPLOAD_ERR_NO_FILE){
+    $f=$_FILES['attachment'];
+    if($f['error']!==UPLOAD_ERR_OK)throw new RuntimeException('Não foi possível receber o arquivo. Verifique o limite de envio da hospedagem.');
+    if((int)$f['size']>20*1024*1024)throw new RuntimeException('O arquivo deve ter no máximo 20 MB.');
+    $mime=(new finfo(FILEINFO_MIME_TYPE))->file($f['tmp_name']);
+    $allowed=['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp','image/gif'=>'gif','application/pdf'=>'pdf','text/plain'=>'txt','text/csv'=>'csv','application/msword'=>'doc','application/vnd.openxmlformats-officedocument.wordprocessingml.document'=>'docx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'=>'xlsx','audio/mpeg'=>'mp3','audio/ogg'=>'ogg','audio/wav'=>'wav','audio/x-wav'=>'wav','audio/mp4'=>'m4a','audio/x-m4a'=>'m4a','audio/aac'=>'aac','audio/webm'=>'weba','video/mp4'=>'mp4','video/webm'=>'webm','video/quicktime'=>'mov'];
+    if(!isset($allowed[$mime]))throw new RuntimeException('Formato não permitido. Envie imagem, PDF, documento, áudio MP3/OGG/WAV/M4A ou vídeo MP4/WEBM/MOV.');
+    $dir=__DIR__.'/storage';if(!is_dir($dir)&&!mkdir($dir,0750,true))throw new RuntimeException('Não foi possível preparar o armazenamento.');
+    $stored='consulta_'.bin2hex(random_bytes(18)).'.'.$allowed[$mime];
+    if(!move_uploaded_file($f['tmp_name'],$dir.'/'.$stored))throw new RuntimeException('Falha ao salvar o arquivo enviado.');
+    $original=mb_substr(basename((string)$f['name']),0,250);$size=(int)$f['size'];
+   }
+   if($message===''&&$stored===null)throw new RuntimeException('Escreva uma mensagem ou selecione um arquivo.');
+   try{$st=db()->prepare('INSERT INTO consultation_messages(property_id,sender_id,message_text,original_name,stored_name,mime_type,file_size) VALUES(?,?,?,?,?,?,?)');$st->execute([$pid,$user['id'],$message?:null,$original,$stored,$mime,$size]);}
+   catch(Throwable $e){if($stored&&is_file(__DIR__.'/storage/'.$stored))@unlink(__DIR__.'/storage/'.$stored);throw $e;}
+   redirect('index.php?page=consultations&id='.$pid.'#latest-message');
+  }
   if($action==='equipment_create'){
    $pid=(int)($_POST['property_id']??0);module_require_property($pid,true);
    $kind=$_POST['kind']??'vehicle';if(!in_array($kind,['vehicle','implement','tool','machine'],true))$kind='machine';
@@ -195,6 +217,18 @@ function module_rows(string $sql,array $ids): array {
  catch(Throwable $e){error_log('Germina workspace query failed: '.$e->getMessage());return [];}
 }
 $activities=[];$visits=[];$recs=[];$tasks=[];$equipment=[];$stock=[];$equipmentLogs=[];$maintenance=[];$fields=[];
+$consultationProperty=null;$consultationMessages=[];
+if($page==='consultations'){
+ if($props){
+  $requestedId=(int)($_GET['id']??$props[0]['id']);
+  $consultationProperty=module_property($requestedId);
+  if(!$consultationProperty){$consultationProperty=module_property((int)$props[0]['id']);}
+  if($consultationProperty){
+   $st=db()->prepare('SELECT m.*,u.name sender_name FROM consultation_messages m JOIN users u ON u.id=m.sender_id WHERE m.property_id=? ORDER BY m.id DESC LIMIT 100');
+   $st->execute([$consultationProperty['id']]);$consultationMessages=array_reverse($st->fetchAll());
+  }
+ }
+}
 $needsActivities=in_array($page,['activities','reports'],true);
 $needsVisits=in_array($page,['visits','reports'],true);
 $needsRecs=$page==='recommendations';
@@ -212,7 +246,7 @@ if($ids&&$needsDiary){
  $maintenance=module_rows("SELECT m.*,e.name equipment_name,p.name property_name FROM farm_maintenance m JOIN farm_equipment e ON e.id=m.equipment_id JOIN properties p ON p.id=m.property_id WHERE m.property_id IN ($idsSql) ORDER BY m.maintenance_date DESC,m.id DESC LIMIT 100",$ids);
 }
 if($needsFields){try{foreach($props as $p){$st=db()->prepare('SELECT id,name FROM fields WHERE property_id=?');$st->execute([$p['id']]);foreach($st->fetchAll() as $f)$fields[]=$f+['property_id'=>$p['id']];}}catch(Throwable $e){error_log('Germina workspace fields query failed: '.$e->getMessage());}}
-$titleMap=['dashboard'=>'Visão geral','team'=>'Equipe e acessos','visits'=>'Visitas técnicas','recommendations'=>'Recomendações','tasks'=>'Tarefas','reports'=>'Relatórios','attachments'=>'Arquivos','activities'=>'Diário de campo','properties'=>'Propriedades'];
+$titleMap=['dashboard'=>'Visão geral','team'=>'Equipe e acessos','visits'=>'Visitas técnicas','recommendations'=>'Recomendações','tasks'=>'Tarefas','reports'=>'Relatórios','attachments'=>'Arquivos','activities'=>'Diário de campo','consultations'=>'Consultas','properties'=>'Propriedades'];
 $title=$titleMap[$page]??'Workspace';
 $moduleUi=[
  'team'=>['kicker'=>'CONEXÃO E COLABORAÇÃO','title'=>'Sua rede de trabalho','description'=>'Compartilhe propriedades com profissionais e controle o nível de acesso de cada pessoa.','metric'=>'Propriedades disponíveis','value'=>count($props),'icon'=>'team'],
@@ -220,6 +254,7 @@ $moduleUi=[
  'recommendations'=>['kicker'=>'ORIENTAÇÃO AGRONÔMICA','title'=>'Conhecimento que vira produtividade','description'=>'Acompanhe orientações técnicas, prioridades e próximos passos da produção.','metric'=>'Recomendações','value'=>count($recs),'icon'=>'recommendations'],
  'tasks'=>['kicker'=>'PLANEJAMENTO E EXECUÇÃO','title'=>'Da programação à conclusão','description'=>'Distribua responsabilidades, acompanhe prazos e mantenha o trabalho em movimento.','metric'=>'Tarefas cadastradas','value'=>count($tasks),'icon'=>'tasks'],
  'reports'=>['kicker'=>'INTELIGÊNCIA DA OPERAÇÃO','title'=>'Uma visão clara da sua operação','description'=>'Consulte indicadores consolidados e gere uma versão para impressão ou PDF.','metric'=>'Atividades registradas','value'=>count($activities),'icon'=>'reports'],
+ 'consultations'=>['kicker'=>'COMUNICAÇÃO DIRETA','title'=>'Converse com quem cuida da propriedade','description'=>'Troque mensagens, fotos, documentos, áudios e vídeos com os participantes autorizados.','metric'=>'Propriedades com acesso','value'=>count($props),'icon'=>'consultations'],
  'attachments'=>['kicker'=>'DOCUMENTOS DA PROPRIEDADE','title'=>'Tudo organizado em um só lugar','description'=>'Centralize documentos, laudos e imagens vinculados às suas propriedades.','metric'=>'Propriedades com arquivos','value'=>count($props),'icon'=>'attachments'],
  'activities'=>['kicker'=>'ROTINA E HISTÓRICO','title'=>'A memória do trabalho no campo','description'=>'Consulte os registros realizados e acompanhe o histórico das atividades.','metric'=>'Registros recentes','value'=>count($activities),'icon'=>'activities']
 ];
@@ -230,11 +265,12 @@ $moduleIconSvg=[
  'tasks'=>'<svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="m8 12 2.5 2.5L16 9"/></svg>',
  'reports'=>'<svg viewBox="0 0 24 24"><path d="M4 20V4m0 16h17"/><rect x="7" y="12" width="3" height="5" rx="1"/><rect x="13" y="8" width="3" height="9" rx="1"/><rect x="19" y="5" width="2" height="12" rx="1"/></svg>',
  'attachments'=>'<svg viewBox="0 0 24 24"><path d="m8 12 6.5-6.5a4 4 0 0 1 5.7 5.7l-9 9a6 6 0 0 1-8.5-8.5l9-9"/></svg>',
+ 'consultations'=>'<svg viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 9 9 0 0 1-4-.9L3 21l1.9-5.5a9 9 0 0 1-.9-4A8.5 8.5 0 0 1 12.5 3H13a8.5 8.5 0 0 1 8 8v.5Z"/><path d="M8 12h8M8 8.5h5"/></svg>',
  'activities'=>'<svg viewBox="0 0 24 24"><path d="M4 19V5m0 14h16M7 15l4-4 3 2 5-7"/></svg>'
 ];
-?><!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title><?=e($title)?> · Germina</title><link rel="stylesheet" href="assets/app.css?v=20261124g"></head><body>
+?><!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title><?=e($title)?> · Germina</title><link rel="stylesheet" href="assets/app.css?v=20261124h"></head><body>
 <div class="layout"><aside class="sidebar"><a class="brand" href="index.php"><span class="brand-mark">✳</span><span>Germina<small>GESTÃO NO CAMPO</small></span></a><div class="nav-label">MENU PRINCIPAL</div>
-<?php $navIcons=['dashboard'=> '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="5" rx="2"/><rect x="13" y="10" width="8" height="11" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/></svg>','properties'=> '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V21H3z"/><path d="M9 21v-7h6v7"/></svg>','activities'=> '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m0 14h16M7 15l4-4 3 2 5-7"/></svg>','team'=> '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 4v2"/></svg>','visits'=> '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M8 2v4m8-4v4M3 9h18m-13 5h3m-3 3h7"/></svg>','recommendations'=> '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21c-5-3-8-7-8-11a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 4-3 8-8 11Z"/><path d="M12 18c0-5 2-8 5-10M12 14c-1-2-3-3-5-3"/></svg>','tasks'=> '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="m8 12 2.5 2.5L16 9m-8-3h8"/></svg>','reports'=> '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V4m0 16h17"/><rect x="7" y="12" width="3" height="5" rx="1"/><rect x="13" y="8" width="3" height="9" rx="1"/><rect x="19" y="5" width="2" height="12" rx="1"/></svg>','attachments'=> '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 12 6.5-6.5a4 4 0 0 1 5.7 5.7l-9 9a6 6 0 0 1-8.5-8.5l9-9"/></svg>']; foreach(['dashboard'=>'Visão geral','properties'=>'Propriedades','activities'=>'Diário de campo','team'=>'Equipe e acessos','visits'=>'Visitas técnicas','recommendations'=>'Recomendações','tasks'=>'Tarefas','reports'=>'Relatórios','attachments'=>'Arquivos'] as $key=>$label):?><a class="nav-link <?= $page===$key?'active':''?>" href="index.php<?= $key==='dashboard'?'':'?page='.$key?>"><span class="nav-icon"><?=$navIcons[$key]??''?></span><span><?=e($label)?></span></a><?php endforeach;?>
+<?php $navIcons=['dashboard'=> '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="5" rx="2"/><rect x="13" y="10" width="8" height="11" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/></svg>','properties'=> '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V21H3z"/><path d="M9 21v-7h6v7"/></svg>','activities'=> '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m0 14h16M7 15l4-4 3 2 5-7"/></svg>','team'=> '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 4v2"/></svg>','visits'=> '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M8 2v4m8-4v4M3 9h18m-13 5h3m-3 3h7"/></svg>','recommendations'=> '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21c-5-3-8-7-8-11a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 4-3 8-8 11Z"/><path d="M12 18c0-5 2-8 5-10M12 14c-1-2-3-3-5-3"/></svg>','tasks'=> '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="m8 12 2.5 2.5L16 9m-8-3h8"/></svg>','reports'=> '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V4m0 16h17"/><rect x="7" y="12" width="3" height="5" rx="1"/><rect x="13" y="8" width="3" height="9" rx="1"/><rect x="19" y="5" width="2" height="12" rx="1"/></svg>','attachments'=> '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 12 6.5-6.5a4 4 0 0 1 5.7 5.7l-9 9a6 6 0 0 1-8.5-8.5l9-9"/></svg>','consultations'=>'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 9 9 0 0 1-4-.9L3 21l1.9-5.5a9 9 0 0 1-.9-4A8.5 8.5 0 0 1 12.5 3H13a8.5 8.5 0 0 1 8 8v.5Z"/><path d="M8 12h8M8 8.5h5"/></svg>']; foreach(['dashboard'=>'Visão geral','properties'=>'Propriedades','activities'=>'Diário de campo','team'=>'Equipe e acessos','visits'=>'Visitas técnicas','recommendations'=>'Recomendações','tasks'=>'Tarefas','reports'=>'Relatórios','attachments'=>'Arquivos'] as $key=>$label):?><a class="nav-link <?= $page===$key?'active':''?>" href="index.php<?= $key==='dashboard'?'':'?page='.$key?>"><span class="nav-icon"><?=$navIcons[$key]??''?></span><span><?=e($label)?></span></a><?php endforeach;?>
 <div class="sidebar-bottom"><div class="avatar"><?=e(strtoupper(substr($user['name'],0,1)))?></div><div class="user-meta"><strong><?=e($user['name'])?></strong><small><?=$user['role']==='professional'?'Profissional do agro':'Produtor rural'?></small></div><form method="post" action="index.php?page=logout"><?=csrf_field()?><button class="logout">↗</button></form></div></aside>
 <main class="main"><header class="topbar"><button class="mobile-back" type="button" data-mobile-back aria-label="Voltar"><span aria-hidden="true">←</span><span>Voltar</span></button><div><div class="breadcrumb">Workspace / <?=e($title)?></div><h1><?=e($title)?></h1></div><div class="top-actions"><span class="user-chip"><?=e($user['name'])?></span></div></header><div class="content module-page module-<?=e($page)?>">
 <?php if($notice):?><div class="success"><?=e($notice)?></div><?php endif;?><?php foreach($errors as $err):?><div class="alert"><?=e($err)?></div><?php endforeach;?>
@@ -242,7 +278,7 @@ $moduleIconSvg=[
 <?php if($page==='dashboard'):?>
 <div class="welcome"><div><span class="eyebrow">SEU ESPAÇO DE TRABALHO</span><h2>Olá, <?=e(explode(' ',$user['name'])[0])?> 🌱</h2><p>Gestão integrada de propriedades, equipe e rotina no campo.</p></div><a class="btn primary" href="index.php?page=properties">+ Nova propriedade</a></div>
 <div class="stats"><article class="stat"><span>Propriedades acessíveis</span><strong><?=count($props)?></strong><small>próprias e compartilhadas</small></article><article class="stat"><span>Talhões</span><strong><?=count($fields)?></strong><small>nas propriedades acessíveis</small></article><article class="stat"><span>Tarefas em aberto</span><strong><?=count(array_filter($tasks,fn($t)=>in_array($t['status'],['open','doing'],true)))?></strong><small>pendentes ou em andamento</small></article></div>
-<div class="module-grid"><?php $dashboardModules=['team'=>['Equipe e acessos','Convide profissionais e organize permissões.','team'],'visits'=>['Visitas técnicas','Histórico de atendimentos e acompanhamento.','visits'],'recommendations'=>['Recomendações','Orientações e prioridades técnicas.','recommendations'],'tasks'=>['Tarefas','Planeje atividades e acompanhe entregas.','tasks'],'reports'=>['Relatórios','Indicadores e visão consolidada.','reports'],'attachments'=>['Arquivos','Documentos e imagens das propriedades.','attachments']];foreach($dashboardModules as $k=>$m):?><a class="module-card module-card-<?=$k?>" href="index.php?page=<?=$k?>"><span class="module-card-icon"><?=$moduleIconSvg[$m[2]]?></span><span class="module-card-copy"><strong><?=e($m[0])?></strong><small><?=e($m[1])?></small><b>Explorar módulo <span>↗</span></b></span></a><?php endforeach;?></div>
+<div class="module-grid"><?php $dashboardModules=['team'=>['Equipe e acessos','Convide profissionais e organize permissões.','team'],'visits'=>['Visitas técnicas','Histórico de atendimentos e acompanhamento.','visits'],'recommendations'=>['Recomendações','Orientações e prioridades técnicas.','recommendations'],'tasks'=>['Tarefas','Planeje atividades e acompanhe entregas.','tasks'],'reports'=>['Relatórios','Indicadores e visão consolidada.','reports'],'attachments'=>['Arquivos','Documentos e imagens das propriedades.','attachments'],'consultations'=>['Consultas','Converse com produtores e profissionais, compartilhe mídias e documentos.','consultations']];foreach($dashboardModules as $k=>$m):?><a class="module-card module-card-<?=$k?>" href="index.php?page=<?=$k?>"><span class="module-card-icon"><?=$moduleIconSvg[$m[2]]?></span><span class="module-card-copy"><strong><?=e($m[0])?></strong><small><?=e($m[1])?></small><b>Explorar módulo <span>↗</span></b></span></a><?php endforeach;?></div>
 <?php elseif($page==='team'):?>
 <div class="page-intro"><h2>Conexões entre produtores e profissionais</h2><p>O produtor compartilha um código; o profissional solicita acesso e aguarda aprovação. Nenhum dado é liberado antes da aprovação.</p></div>
 <?php if($user['role']==='professional'):?>
@@ -273,6 +309,20 @@ $moduleIconSvg=[
 <div class="panel"><?php if(!$tasks):?><div class="empty">Nenhuma tarefa cadastrada.</div><?php else:?><div class="activity-list"><?php foreach($tasks as $t):?><div class="activity-item"><span class="activity-dot"></span><div><strong><?=e($t['title'])?></strong><p><?=e($t['description']??'')?></p><small><?=e($t['property_name'])?> · <?=e($t['status'])?><?= $t['due_date']?' · Prazo '.date('d/m/Y',strtotime($t['due_date'])):''?><?= $t['assignee_name']?' · Responsável '.$t['assignee_name']:''?></small><form method="post" class="inline-form"><?=csrf_field()?><input type="hidden" name="action" value="task_status"><input type="hidden" name="id" value="<?=(int)$t['id']?>"><select name="status"><option value="open" <?=$t['status']==='open'?'selected':''?>>Aberta</option><option value="doing" <?=$t['status']==='doing'?'selected':''?>>Em andamento</option><option value="done" <?=$t['status']==='done'?'selected':''?>>Concluída</option></select><button class="btn secondary">Atualizar</button></form></div></div><?php endforeach;?></div><?php endif;?></div>
 <?php elseif($page==='reports'):?>
 <div class="page-intro"><h2>Relatórios operacionais</h2><p>Resumo consolidado das propriedades às quais você tem acesso.</p></div><div class="stats"><article class="stat"><span>Propriedades</span><strong><?=count($props)?></strong></article><article class="stat"><span>Atividades</span><strong><?=count($activities)?></strong></article><article class="stat"><span>Visitas técnicas</span><strong><?=count($visits)?></strong></article></div><div class="panel"><div class="panel-head"><div><h3>Resumo por propriedade</h3><p>Indicadores para acompanhamento e impressão.</p></div><button class="btn primary" onclick="window.print()">Imprimir / salvar PDF</button></div><div class="table-wrap"><table><thead><tr><th>Propriedade</th><th>Área (ha)</th><th>Talhões</th></tr></thead><tbody><?php foreach($props as $p):?><tr><td><?=e($p['name'])?></td><td><?=e((string)($p['area_ha']??'—'))?></td><td><?=e((string)$p['field_count'])?></td></tr><?php endforeach;?></tbody></table></div></div>
+<?php elseif($page==='consultations'):?>
+<div class="consultation-intro"><div><h2>Comunicação entre produtor e profissional</h2><p>Converse diretamente dentro do Germina. As mensagens e os arquivos ficam vinculados à propriedade e só são visíveis para quem tem acesso aprovado.</p></div><span class="consultation-secure">Acesso controlado</span></div>
+<?php if(!$props):?><div class="panel empty"><strong>Nenhuma propriedade disponível</strong><p>Cadastre uma propriedade ou solicite acesso a uma propriedade compartilhada para iniciar uma consulta.</p><a class="btn primary" href="index.php?page=team">Equipe e acessos</a></div>
+<?php elseif($consultationProperty):?>
+<div class="consultation-property-picker"><form method="get"><input type="hidden" name="page" value="consultations"><label>Conversa da propriedade<select name="id" onchange="this.form.submit()"><?php foreach($props as $cp):?><option value="<?=(int)$cp['id']?>" <?=((int)$consultationProperty['id']===(int)$cp['id']?'selected':'')?>><?=e($cp['name'])?></option><?php endforeach;?></select></label></form><span><?=count($consultationMessages)?> mensagens recentes</span></div>
+<section class="consultation-chat" data-consultation-chat data-property-id="<?=(int)$consultationProperty['id']?>" data-last-id="<?=(int)($consultationMessages?end($consultationMessages)['id']:0)?>">
+ <div class="consultation-chat-head"><span class="consultation-avatar">✳</span><div><strong><?=e($consultationProperty['name'])?></strong><small>Produtor e profissionais autorizados</small></div><span class="consultation-online">Conversa da propriedade</span></div>
+ <div class="consultation-messages" id="consultationMessages">
+ <?php if(!$consultationMessages):?><div class="consultation-empty"><span>✉</span><strong>Comece a conversa</strong><p>Envie uma mensagem, foto, áudio, vídeo ou documento para iniciar o atendimento.</p></div><?php else:foreach($consultationMessages as $cm):$mine=(int)$cm['sender_id']===(int)$user['id'];?><article class="consultation-message <?=$mine?'mine':'theirs'?>" data-message-id="<?=(int)$cm['id']?>"><div class="consultation-message-meta"><strong><?=e($mine?'Você':$cm['sender_name'])?></strong><time><?=date('d/m/Y H:i',strtotime($cm['created_at']))?></time></div><?php if($cm['message_text']):?><p><?=nl2br(e($cm['message_text']))?></p><?php endif;?><?php if($cm['stored_name']):?><div class="consultation-attachment"><?php if(str_starts_with($cm['mime_type'],'image/')):?><a href="consultation_download.php?id=<?=(int)$cm['id']?>" target="_blank"><img src="consultation_download.php?id=<?=(int)$cm['id']?>&inline=1" alt="<?=e($cm['original_name'])?>"></a><?php elseif(str_starts_with($cm['mime_type'],'audio/')):?><audio controls preload="none" src="consultation_download.php?id=<?=(int)$cm['id']?>&inline=1"></audio><?php elseif(str_starts_with($cm['mime_type'],'video/')):?><video controls preload="none" src="consultation_download.php?id=<?=(int)$cm['id']?>&inline=1"></video><?php endif;?><a class="consultation-file-link" href="consultation_download.php?id=<?=(int)$cm['id']?>"><?=e($cm['original_name'])?> · <?=number_format((int)$cm['file_size']/1024,0,',','.')?> KB</a></div><?php endif;?></article><?php endforeach;endif;?>
+ </div>
+ <form method="post" enctype="multipart/form-data" class="consultation-composer" id="consultationComposer"><?=csrf_field()?><input type="hidden" name="action" value="consultation_send"><input type="hidden" name="property_id" value="<?=(int)$consultationProperty['id']?>"><label class="consultation-text-label" for="consultationMessage">Sua mensagem</label><textarea id="consultationMessage" name="message" rows="3" maxlength="5000" placeholder="Escreva sua mensagem para o produtor ou profissional..."></textarea><div class="consultation-compose-bottom"><label class="consultation-attach"><span>＋ Anexar arquivo</span><input type="file" name="attachment" accept="image/*,audio/*,video/mp4,video/webm,video/quicktime,.pdf,.doc,.docx,.xlsx,.csv,.txt"></label><small>Fotos, documentos, áudios e vídeos · até 20 MB por arquivo*</small><button class="btn primary">Enviar mensagem</button></div></form>
+ <p class="consultation-footnote">* O limite efetivo também depende das configurações de upload da hospedagem. Evite enviar arquivos com dados pessoais desnecessários.</p>
+</section>
+<?php else:?><div class="panel empty"><strong>Selecione uma propriedade para conversar.</strong></div><?php endif;?>
 <?php elseif($page==='attachments'):?>
 <div class="page-intro"><h2>Documentos e arquivos</h2><p>Envie documentos PDF e imagens vinculados às propriedades (máximo 5 MB).</p></div>
 <?php foreach($props as $p):?><div class="panel"><h3><?=e($p['name'])?></h3><?php if(can_edit_property($p)):?><form method="post" enctype="multipart/form-data" class="inline-form"><?=csrf_field()?><input type="hidden" name="action" value="upload"><input type="hidden" name="property_id" value="<?=(int)$p['id']?>"><input type="file" name="attachment" accept=".pdf,.jpg,.jpeg,.png,.webp" required><button class="btn primary">Enviar arquivo</button></form><?php endif; $st=db()->prepare('SELECT a.*,u.name uploader FROM attachments a JOIN users u ON u.id=a.uploaded_by WHERE a.property_id=? ORDER BY a.created_at DESC');$st->execute([$p['id']]);$files=$st->fetchAll();?><div class="activity-list"><?php foreach($files as $f):?><div class="activity-item"><span class="activity-dot"></span><div><strong><a href="download.php?id=<?=(int)$f['id']?>"><?=e($f['original_name'])?></a></strong><small><?=e($f['uploader'])?> · <?=number_format($f['file_size']/1024,0)?> KB · <?=date('d/m/Y',strtotime($f['created_at']))?></small></div></div><?php endforeach;?><?php if(!$files):?><div class="empty compact">Nenhum arquivo enviado.</div><?php endif;?></div></div><?php endforeach;?>
@@ -317,4 +367,39 @@ document.querySelectorAll('[data-copy-code]').forEach(button=>button.addEventLis
   try{await navigator.clipboard.writeText(code);button.textContent='Copiado!';}
   catch(e){button.textContent='Selecione e copie o código';}
 }));
-</script></body></html>
+<script>
+(function(){
+ const chat=document.querySelector('[data-consultation-chat]');
+ if(!chat)return;
+ const list=document.getElementById('consultationMessages');
+ let last=Number(chat.dataset.lastId||0);
+ function addMessage(m){
+  const empty=list.querySelector('.consultation-empty');if(empty)empty.remove();
+  const mine=Number(m.sender_id)===Number(window.GERMINA_USER_ID||0);
+  const article=document.createElement('article');article.className='consultation-message '+(mine?'mine':'theirs');article.dataset.messageId=m.id;
+  const meta=document.createElement('div');meta.className='consultation-message-meta';
+  const name=document.createElement('strong');name.textContent=mine?'Você':m.sender_name;
+  const time=document.createElement('time');time.textContent=new Date(String(m.created_at).replace(' ','T')).toLocaleString('pt-BR');
+  meta.append(name,time);article.append(meta);
+  if(m.message_text){const p=document.createElement('p');p.textContent=m.message_text;article.append(p);}
+  if(m.original_name){
+   const wrap=document.createElement('div');wrap.className='consultation-attachment';
+   const url='consultation_download.php?id='+encodeURIComponent(m.id);
+   if((m.mime_type||'').startsWith('image/')){const a=document.createElement('a');a.href=url;a.target='_blank';const img=document.createElement('img');img.src=url+'&inline=1';img.alt=m.original_name;a.append(img);wrap.append(a);}
+   else if((m.mime_type||'').startsWith('audio/')){const audio=document.createElement('audio');audio.controls=true;audio.preload='none';audio.src=url+'&inline=1';wrap.append(audio);}
+   else if((m.mime_type||'').startsWith('video/')){const video=document.createElement('video');video.controls=true;video.preload='none';video.src=url+'&inline=1';wrap.append(video);}
+   const a=document.createElement('a');a.className='consultation-file-link';a.href=url;a.textContent=m.original_name+' · '+Math.round(Number(m.file_size)/1024)+' KB';wrap.append(a);article.append(wrap);
+  }
+  list.append(article);last=Math.max(last,Number(m.id));
+ }
+ async function poll(){
+  try{const r=await fetch('consultation_feed.php?property_id='+encodeURIComponent(chat.dataset.propertyId)+'&after='+last,{credentials:'same-origin',cache:'no-store'});if(!r.ok)return;const data=await r.json();(data.messages||[]).forEach(addMessage);if(data.messages&&data.messages.length)list.scrollTop=list.scrollHeight;}
+  catch(e){}
+ }
+ list.scrollTop=list.scrollHeight;
+ window.setInterval(poll,10000);
+ const form=document.getElementById('consultationComposer');
+ if(form)form.addEventListener('submit',()=>{const b=form.querySelector('button[type="submit"],button:not([type])');if(b){b.disabled=true;b.textContent='Enviando...';}});
+})();
+</script>
+</body></html>
